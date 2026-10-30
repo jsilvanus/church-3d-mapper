@@ -17,10 +17,13 @@
     "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
-    "fastify": "^5.2.0"
+    "@fastify/static": "^10.1.8",
+    "fastify": "^5.2.0",
+    "three": "^0.187.0"
   },
   "devDependencies": {
     "@types/node": "^22.13.0",
+    "@types/three": "^0.186.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.3"
   },

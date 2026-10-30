@@ -21,6 +21,17 @@ test('church-3d-mapper server routes', async () => {
   assert.equal(resCss.statusCode, 200);
   assert.ok(resCss.body.includes('--bg-dark'));
 
+  // Serve app.js
+  const resJs = await app.inject({ method: 'GET', url: '/app.js' });
+  assert.equal(resJs.statusCode, 200);
+  assert.ok(resJs.body.includes('three'));
+
+  // Serve Three.js vendor module offline
+  await app.ready();
+  const resThree = await app.inject({ method: 'GET', url: '/vendor/three/build/three.module.js' });
+  assert.equal(resThree.statusCode, 200);
+  assert.ok(resThree.body.length > 500000);
+
   // Validate API
   const model = createStandardHallTemplate();
   const resVal = await app.inject({

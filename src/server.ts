@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import fastify, { type FastifyInstance } from 'fastify';
+import fastifyStatic from '@fastify/static';
 import { validateVenueModel } from './validator.js';
 import { createStandardHallTemplate } from './templates/standard-hall.js';
 
@@ -15,6 +16,16 @@ export function createMapperServer(options: ServerOptions = {}): FastifyInstance
   const pispaceUrl = options.pispaceUrl ?? process.env.PISPACE_URL ?? 'http://127.0.0.1:3108';
 
   const webDir = path.resolve('src/web');
+  const threeDir = path.resolve('node_modules/three');
+
+  // Serve Three.js vendor files offline
+  if (fs.existsSync(threeDir)) {
+    app.register(fastifyStatic, {
+      root: threeDir,
+      prefix: '/vendor/three/',
+      decorateReply: false
+    });
+  }
 
   // Serve static UI assets
   app.get('/', async (_req, reply) => {

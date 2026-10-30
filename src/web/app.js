@@ -1,4 +1,6 @@
-// Church 3D Venue Mapper Canvas Application
+// Church 3D Venue Mapper Canvas & WebGL 3D Application
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const KESKUSKIRKKO_TEMPLATE = {
   name: "Riihimäen Keskuskirkko",
@@ -149,6 +151,16 @@ let draggingVertex = null; // { zone, vertexIndex }
 let isPanning = false;
 let startPan = { x: 0, y: 0 };
 
+// View Mode: "2d" (CAD Floorplan) or "3d" (WebGL Perspective Orbit)
+let viewMode = "2d";
+let threeRenderer = null;
+let threeScene = null;
+let threeCamera = null;
+let threeControls = null;
+let threeObjectsGroup = null;
+const threeRaycaster = new THREE.Raycaster();
+const threeMouse = new THREE.Vector2();
+
 // Viewport Transform: meters -> screen pixels
 // World center (0, 0)
 let scale = 25; // 25 pixels per meter
@@ -156,6 +168,10 @@ let originScreen = { x: 0, y: 0 };
 
 const canvas = document.getElementById("mapCanvas");
 const ctx = canvas.getContext("2d");
+const viewport3d = document.getElementById("viewport3d");
+const view3dControls = document.getElementById("view3dControls");
+const btnView2D = document.getElementById("btnView2D");
+const btnView3D = document.getElementById("btnView3D");
 
 function resizeCanvas() {
   canvas.width = canvas.parentElement.clientWidth;
@@ -568,6 +584,7 @@ function selectItem(item) {
   if (!item) {
     editor.style.display = "none";
     emptyHint.style.display = "block";
+    if (viewMode === "3d") update3DScene();
     return;
   }
 
@@ -591,32 +608,62 @@ function selectItem(item) {
     document.getElementById("camPan").value = item.ref.baseOrientation.pan;
     document.getElementById("camTilt").value = item.ref.baseOrientation.tilt;
   }
+
+  if (viewMode === "3d") update3DScene();
 }
 
 // Form Field Updaters
 document.getElementById("itemId").addEventListener("input", (e) => {
-  if (selectedItem) selectedItem.ref.id = e.target.value;
+  if (selectedItem) {
+    selectedItem.ref.id = e.target.value;
+    if (viewMode === "3d") update3DScene();
+  }
 });
 document.getElementById("itemName").addEventListener("input", (e) => {
-  if (selectedItem) { selectedItem.ref.name = e.target.value; render(); }
+  if (selectedItem) {
+    selectedItem.ref.name = e.target.value;
+    render();
+    if (viewMode === "3d") update3DScene();
+  }
 });
 document.getElementById("zoneFloor").addEventListener("input", (e) => {
-  if (selectedItem?.type === "zone") { selectedItem.ref.floorHeight = Number(e.target.value); render(); }
+  if (selectedItem?.type === "zone") {
+    selectedItem.ref.floorHeight = Number(e.target.value);
+    render();
+    if (viewMode === "3d") update3DScene();
+  }
 });
 document.getElementById("zoneCeiling").addEventListener("input", (e) => {
-  if (selectedItem?.type === "zone") selectedItem.ref.ceilingHeight = Number(e.target.value);
+  if (selectedItem?.type === "zone") {
+    selectedItem.ref.ceilingHeight = Number(e.target.value);
+    if (viewMode === "3d") update3DScene();
+  }
 });
 document.getElementById("zoneColor").addEventListener("input", (e) => {
-  if (selectedItem?.type === "zone") { selectedItem.ref.color = e.target.value; render(); }
+  if (selectedItem?.type === "zone") {
+    selectedItem.ref.color = e.target.value;
+    render();
+    if (viewMode === "3d") update3DScene();
+  }
 });
 document.getElementById("camPan").addEventListener("input", (e) => {
-  if (selectedItem?.type === "camera") { selectedItem.ref.baseOrientation.pan = Number(e.target.value); render(); }
+  if (selectedItem?.type === "camera") {
+    selectedItem.ref.baseOrientation.pan = Number(e.target.value);
+    render();
+    if (viewMode === "3d") update3DScene();
+  }
 });
 document.getElementById("camTilt").addEventListener("input", (e) => {
-  if (selectedItem?.type === "camera") selectedItem.ref.baseOrientation.tilt = Number(e.target.value);
+  if (selectedItem?.type === "camera") {
+    selectedItem.ref.baseOrientation.tilt = Number(e.target.value);
+    if (viewMode === "3d") update3DScene();
+  }
 });
 document.getElementById("camHeight").addEventListener("input", (e) => {
-  if (selectedItem?.type === "camera") selectedItem.ref.position.z = Number(e.target.value);
+  if (selectedItem?.type === "camera") {
+    selectedItem.ref.position.z = Number(e.target.value);
+    if (viewMode === "3d") update3DScene();
+  }
 });
 
 // Delete Item
@@ -643,6 +690,75 @@ document.getElementById("btnExport").addEventListener("click", () => {
   URL.revokeObjectURL(url);
 });
 
+// Template loading
+document.getElementById("templateSelect")?.addEventListener("change", async (e) => {
+  const val = e.target.value;
+  if (!val) return;
+  if (val === "keskuskirkko") {
+    currentVenue = JSON.parse(JSON.stringify(KESKUSKIRKKO_TEMPLATE));
+  } else if (val === "standard-hall") {
+    try {
+      const res = await fetch("/api/templates/standard-hall");
+      if (res.ok) currentVenue = await res.json();
+    } catch {
+      // fallback
+    }
+  }
+  selectItem(null);
+  render();
+  if (viewMode === "3d") update3DScene();
+});
+
+// Load JSON File
+const fileInput = document.getElementById("fileInput");
+document.getElementById("btnLoadFile")?.addEventListener("click", () => fileInput?.click());
+fileInput?.addEventListener("change", (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    try {
+      const parsed = JSON.parse(event.target.result);
+      currentVenue = parsed;
+      selectItem(null);
+      render();
+      if (viewMode === "3d") update3DScene();
+    } catch (err) {
+      alert(`Invalid JSON file: ${err.message}`);
+    }
+  };
+  reader.readAsText(file);
+});
+
+// Validate Button
+document.getElementById("btnValidate")?.addEventListener("click", async () => {
+  try {
+    const res = await fetch("/api/validate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(currentVenue)
+    });
+    const result = await res.json();
+    const statusBadge = document.getElementById("validationStatus");
+    const issuesList = document.getElementById("validationIssuesList");
+    issuesList.innerHTML = "";
+    if (result.valid) {
+      statusBadge.className = "status-badge ok";
+      statusBadge.innerText = "Model Valid (No issues)";
+    } else {
+      statusBadge.className = "status-badge error";
+      statusBadge.innerText = `Invalid (${result.errors.length} errors)`;
+      for (const err of result.errors) {
+        const li = document.createElement("li");
+        li.innerText = `• ${err}`;
+        issuesList.appendChild(li);
+      }
+    }
+  } catch (err) {
+    alert(`Validation check failed: ${err.message}`);
+  }
+});
+
 // Push to PiSpace
 document.getElementById("btnPushPiSpace").addEventListener("click", async () => {
   try {
@@ -659,6 +775,338 @@ document.getElementById("btnPushPiSpace").addEventListener("click", async () => 
   } catch (err) {
     alert(`Failed to reach PiSpace on port 3108: ${err.message}`);
   }
+});
+
+// ==========================================
+// 3D WebGL Perspective Orbit Implementation
+// ==========================================
+
+function init3D() {
+  if (threeRenderer) return;
+
+  const width = viewport3d.clientWidth || 800;
+  const height = viewport3d.clientHeight || 600;
+
+  threeScene = new THREE.Scene();
+  threeScene.background = new THREE.Color(0x121418);
+
+  threeCamera = new THREE.PerspectiveCamera(45, width / height, 0.1, 500);
+  threeCamera.up.set(0, 0, 1); // +Z is UP in Church Space
+  threeCamera.position.set(0, -22, 14);
+
+  threeRenderer = new THREE.WebGLRenderer({ antialias: true });
+  threeRenderer.setSize(width, height);
+  threeRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  viewport3d.appendChild(threeRenderer.domElement);
+
+  threeControls = new OrbitControls(threeCamera, threeRenderer.domElement);
+  threeControls.target.set(0, 2, 1);
+  threeControls.enableDamping = true;
+  threeControls.dampingFactor = 0.05;
+  threeControls.maxDistance = 150;
+  threeControls.minDistance = 2;
+
+  // Lighting
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+  threeScene.add(ambientLight);
+
+  const mainLight = new THREE.DirectionalLight(0xffffff, 1.2);
+  mainLight.position.set(12, 18, 25);
+  threeScene.add(mainLight);
+
+  const fillLight = new THREE.DirectionalLight(0x7090b0, 0.5);
+  fillLight.position.set(-12, -18, 12);
+  threeScene.add(fillLight);
+
+  threeObjectsGroup = new THREE.Group();
+  threeScene.add(threeObjectsGroup);
+
+  // Raycasting for 3D Click Selection
+  viewport3d.addEventListener("click", (e) => {
+    const rect = viewport3d.getBoundingClientRect();
+    threeMouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    threeMouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    threeRaycaster.setFromCamera(threeMouse, threeCamera);
+
+    const intersects = threeRaycaster.intersectObjects(threeObjectsGroup.children, true);
+    for (const hit of intersects) {
+      let curr = hit.object;
+      while (curr && !curr.userData?.item) curr = curr.parent;
+      if (curr?.userData?.item) {
+        selectItem(curr.userData.item);
+        break;
+      }
+    }
+  });
+
+  animate3D();
+}
+
+function onResize3D() {
+  if (!threeRenderer || !threeCamera) return;
+  const width = viewport3d.clientWidth || 800;
+  const height = viewport3d.clientHeight || 600;
+  threeCamera.aspect = width / height;
+  threeCamera.updateProjectionMatrix();
+  threeRenderer.setSize(width, height);
+}
+
+function animate3D() {
+  requestAnimationFrame(animate3D);
+  if (viewMode === "3d" && threeControls && threeRenderer && threeScene && threeCamera) {
+    threeControls.update();
+    threeRenderer.render(threeScene, threeCamera);
+  }
+}
+
+function createHumanAvatar() {
+  const avatarGroup = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color: 0xecf0f1, roughness: 0.6 });
+
+  // Torso / body (1.35m)
+  const bodyGeo = new THREE.CylinderGeometry(0.18, 0.18, 1.35, 12);
+  bodyGeo.rotateX(Math.PI / 2);
+  const bodyMesh = new THREE.Mesh(bodyGeo, mat);
+  bodyMesh.position.set(0, 0, 0.675);
+  avatarGroup.add(bodyMesh);
+
+  // Head (0.24m diameter)
+  const headGeo = new THREE.SphereGeometry(0.12, 12, 12);
+  const headMesh = new THREE.Mesh(headGeo, mat);
+  headMesh.position.set(0, 0, 1.55);
+  avatarGroup.add(headMesh);
+
+  return avatarGroup;
+}
+
+function update3DScene() {
+  if (!threeObjectsGroup) return;
+
+  // Clear previous meshes
+  while (threeObjectsGroup.children.length > 0) {
+    const obj = threeObjectsGroup.children[0];
+    threeObjectsGroup.remove(obj);
+    if (obj.geometry) obj.geometry.dispose();
+  }
+
+  const dims = currentVenue.dimensions || { widthMeters: 16, lengthMeters: 30, heightMeters: 14 };
+
+  // 1. Nave Floor Plane & Grid
+  const gridHelper = new THREE.GridHelper(Math.max(dims.widthMeters, dims.lengthMeters) + 4, 34, 0x3b82f6, 0x222938);
+  gridHelper.rotation.x = Math.PI / 2; // Flat on XY plane
+  threeObjectsGroup.add(gridHelper);
+
+  // Sanctuary Origin Ring (0, 0, 0)
+  const ringGeo = new THREE.TorusGeometry(0.35, 0.04, 16, 32);
+  const ringMat = new THREE.MeshStandardMaterial({ color: 0xf1c40f, roughness: 0.3, metalness: 0.8 });
+  const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+  ringMesh.position.set(0, 0, 0.02);
+  threeObjectsGroup.add(ringMesh);
+
+  // Axis Indicators (+X Red = South, +Y Blue = Altar, +Z Green = Up)
+  const axes = new THREE.AxesHelper(3.0);
+  axes.position.set(0, 0, 0.02);
+  threeObjectsGroup.add(axes);
+
+  // 2. Extruded 3D Zones
+  for (const zone of currentVenue.zones) {
+    if (!zone.polygon || zone.polygon.length < 3) continue;
+
+    const shape = new THREE.Shape();
+    shape.moveTo(zone.polygon[0].x, zone.polygon[0].y);
+    for (let i = 1; i < zone.polygon.length; i++) {
+      shape.lineTo(zone.polygon[i].x, zone.polygon[i].y);
+    }
+    shape.closePath();
+
+    const floorZ = zone.floorHeight ?? 0;
+    const ceilingZ = zone.ceilingHeight ?? (floorZ + 3.0);
+    const height = Math.max(0.15, ceilingZ - floorZ);
+
+    const extrudeGeo = new THREE.ExtrudeGeometry(shape, {
+      depth: height,
+      bevelEnabled: false
+    });
+
+    const isSelected = selectedItem?.ref === zone;
+    const zoneMat = new THREE.MeshStandardMaterial({
+      color: zone.color || "#3b82f6",
+      transparent: true,
+      opacity: isSelected ? 0.65 : 0.35,
+      roughness: 0.4
+    });
+
+    const zoneMesh = new THREE.Mesh(extrudeGeo, zoneMat);
+    zoneMesh.position.set(0, 0, floorZ);
+    zoneMesh.userData = { item: { type: "zone", ref: zone } };
+
+    // Wireframe outline
+    const edgesGeo = new THREE.EdgesGeometry(extrudeGeo);
+    const edgesMat = new THREE.LineBasicMaterial({
+      color: isSelected ? 0xffffff : (zone.color || 0x3b82f6),
+      linewidth: isSelected ? 2 : 1
+    });
+    const edgesMesh = new THREE.LineSegments(edgesGeo, edgesMat);
+    zoneMesh.add(edgesMesh);
+
+    threeObjectsGroup.add(zoneMesh);
+
+    // Human avatar in zone center
+    let cx = 0, cy = 0;
+    for (const pt of zone.polygon) { cx += pt.x; cy += pt.y; }
+    cx /= zone.polygon.length;
+    cy /= zone.polygon.length;
+
+    const avatar = createHumanAvatar();
+    avatar.position.set(cx, cy, floorZ);
+    avatar.userData = { item: { type: "zone", ref: zone } };
+    threeObjectsGroup.add(avatar);
+  }
+
+  // 3. PTZ Cameras
+  for (const [key, cam] of Object.entries(currentVenue.cameras)) {
+    const camGroup = new THREE.Group();
+    camGroup.position.set(cam.position.x, cam.position.y, cam.position.z);
+    camGroup.userData = { item: { type: "camera", key, ref: cam } };
+
+    const isSelected = selectedItem?.ref === cam;
+
+    // Camera body dome
+    const domeMat = new THREE.MeshStandardMaterial({
+      color: isSelected ? 0x3b82f6 : 0xecf0f1,
+      metalness: 0.5,
+      roughness: 0.3
+    });
+    const domeGeo = new THREE.SphereGeometry(0.22, 16, 16);
+    const domeMesh = new THREE.Mesh(domeGeo, domeMat);
+    camGroup.add(domeMesh);
+
+    // Look Vector & Wireframe Frustum
+    const panRad = (cam.baseOrientation.pan * Math.PI) / 180;
+    const tiltRad = (cam.baseOrientation.tilt * Math.PI) / 180;
+    const dx = Math.sin(panRad) * Math.cos(tiltRad);
+    const dy = Math.cos(panRad) * Math.cos(tiltRad);
+    const dz = Math.sin(tiltRad);
+
+    const forward = new THREE.Vector3(dx, dy, dz).normalize();
+    const coneLen = 7.0;
+
+    // Sighting ray
+    const rayPoints = [
+      new THREE.Vector3(0, 0, 0),
+      forward.clone().multiplyScalar(coneLen)
+    ];
+    const rayGeo = new THREE.BufferGeometry().setFromPoints(rayPoints);
+    const rayMat = new THREE.LineBasicMaterial({
+      color: isSelected ? 0x60a5fa : 0xf59e0b,
+      linewidth: 2
+    });
+    const rayLine = new THREE.Line(rayGeo, rayMat);
+    camGroup.add(rayLine);
+
+    // Frustum cone
+    const coneGeo = new THREE.ConeGeometry(2.5, coneLen, 4, 1, true);
+    coneGeo.rotateX(Math.PI / 2);
+    const coneMat = new THREE.MeshBasicMaterial({
+      color: isSelected ? 0x3b82f6 : 0xf59e0b,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.4
+    });
+    const coneMesh = new THREE.Mesh(coneGeo, coneMat);
+    coneMesh.position.copy(forward.clone().multiplyScalar(coneLen / 2));
+    coneMesh.lookAt(forward.clone().multiplyScalar(coneLen * 2));
+    camGroup.add(coneMesh);
+
+    threeObjectsGroup.add(camGroup);
+  }
+
+  // 4. Occluders (Keymask Holdout Geometry)
+  if (currentVenue.occluders) {
+    for (const occ of currentVenue.occluders) {
+      const isSelected = selectedItem?.ref === occ;
+      const occMat = new THREE.MeshStandardMaterial({
+        color: isSelected ? 0xef4444 : 0x475569,
+        roughness: 0.7,
+        metalness: 0.2
+      });
+
+      let occMesh;
+      if (occ.kind === "cylinder") {
+        const rad = occ.dimensions?.radius ?? 0.8;
+        const h = occ.dimensions?.height ?? 1.5;
+        const cylGeo = new THREE.CylinderGeometry(rad, rad, h, 20);
+        cylGeo.rotateX(Math.PI / 2);
+        occMesh = new THREE.Mesh(cylGeo, occMat);
+        occMesh.position.set(occ.position.x, occ.position.y, occ.position.z + h / 2);
+      } else {
+        const w = occ.dimensions?.width ?? 2.0;
+        const d = occ.dimensions?.depth ?? 1.2;
+        const h = occ.dimensions?.height ?? 1.0;
+        const boxGeo = new THREE.BoxGeometry(w, d, h);
+        occMesh = new THREE.Mesh(boxGeo, occMat);
+        occMesh.position.set(occ.position.x, occ.position.y, occ.position.z + h / 2);
+      }
+
+      occMesh.userData = { item: { type: "occluder", ref: occ } };
+      threeObjectsGroup.add(occMesh);
+    }
+  }
+}
+
+function switchToView(mode) {
+  viewMode = mode;
+  if (mode === "3d") {
+    btnView3D.classList.add("active");
+    btnView2D.classList.remove("active");
+    canvas.style.display = "none";
+    viewport3d.style.display = "block";
+    view3dControls.style.display = "flex";
+    init3D();
+    onResize3D();
+    update3DScene();
+  } else {
+    btnView2D.classList.add("active");
+    btnView3D.classList.remove("active");
+    canvas.style.display = "block";
+    viewport3d.style.display = "none";
+    view3dControls.style.display = "none";
+    resizeCanvas();
+    render();
+  }
+}
+
+btnView2D.addEventListener("click", () => switchToView("2d"));
+btnView3D.addEventListener("click", () => switchToView("3d"));
+
+// 3D Camera Presets
+document.getElementById("btn3dFocusAltar")?.addEventListener("click", () => {
+  if (!threeCamera || !threeControls) return;
+  threeCamera.position.set(0, -6, 5);
+  threeControls.target.set(0, 2.8, 0.6);
+});
+
+document.getElementById("btn3dFocusPulpit")?.addEventListener("click", () => {
+  if (!threeCamera || !threeControls) return;
+  threeCamera.position.set(-1.0, -3.5, 3.5);
+  threeControls.target.set(-3.5, 0.5, 1.8);
+});
+
+document.getElementById("btn3dFocusChoir")?.addEventListener("click", () => {
+  if (!threeCamera || !threeControls) return;
+  threeCamera.position.set(1.5, -3.0, 3.0);
+  threeControls.target.set(4.5, 2.0, 1.0);
+});
+
+document.getElementById("btn3dReset")?.addEventListener("click", () => {
+  if (!threeCamera || !threeControls) return;
+  threeCamera.position.set(0, -22, 14);
+  threeControls.target.set(0, 2, 1);
+});
+
+// Update on resize
+window.addEventListener("resize", () => {
+  if (viewMode === "3d") onResize3D();
 });
 
 // Initial boot

@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Church 3D Venue Mapper</title>
   <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "/vendor/three/build/three.module.js",
+        "three/addons/": "/vendor/three/examples/jsm/"
+      }
+    }
+  </script>
 </head>
 <body>
   <header class="top-nav">
@@ -13,6 +21,13 @@
       <h1>Church 3D Mapper</h1>
       <span class="subtitle">PiSpace Venue Model Authoring</span>
     </div>
+
+    <!-- View Mode Switcher -->
+    <div class="view-switch">
+      <button id="btnView2D" class="view-mode-btn active" title="2D Top-Down CAD Floorplan">📐 2D CAD Plan</button>
+      <button id="btnView3D" class="view-mode-btn" title="3D Spatial Perspective Orbit Mode">🌐 3D Orbit View</button>
+    </div>
+
     <div class="actions">
       <select id="templateSelect">
         <option value="">Load Template...</option>
@@ -57,9 +72,17 @@
     <!-- Canvas Area -->
     <main class="canvas-container">
       <canvas id="mapCanvas"></canvas>
+      <div id="viewport3d" style="display: none; width: 100%; height: 100%; position: absolute; inset: 0;"></div>
       <div class="canvas-overlay-hints">
         <span id="coordsDisplay">X: 0.00 m, Y: 0.00 m</span>
         <span id="modeDisplay">Mode: Select</span>
+      </div>
+      <!-- 3D Camera / POV Presets Overlay -->
+      <div id="view3dControls" class="view-3d-overlay" style="display: none;">
+        <button id="btn3dFocusAltar" class="view-pill" title="Focus camera on Altar / Chancel">Focus Altar</button>
+        <button id="btn3dFocusPulpit" class="view-pill" title="Focus camera on Pulpit">Focus Pulpit</button>
+        <button id="btn3dFocusChoir" class="view-pill" title="Focus camera on Choir">Focus Choir</button>
+        <button id="btn3dReset" class="view-pill" title="Reset to high oblique view">Reset Orbit</button>
       </div>
     </main>
 
@@ -171,6 +194,6 @@
     </aside>
   </div>
 
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
