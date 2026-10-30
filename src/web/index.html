@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Church 3D Venue Mapper</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top-nav">
+    <div class="brand">
+      <span class="logo">⛪</span>
+      <h1>Church 3D Mapper</h1>
+      <span class="subtitle">PiSpace Venue Model Authoring</span>
+    </div>
+    <div class="actions">
+      <select id="templateSelect">
+        <option value="">Load Template...</option>
+        <option value="keskuskirkko">Riihimäen Keskuskirkko</option>
+        <option value="standard-hall">Standard Rectangular Hall</option>
+      </select>
+      <button id="btnLoadFile" class="btn secondary">Open JSON</button>
+      <input type="file" id="fileInput" accept=".json" style="display: none;">
+      <button id="btnValidate" class="btn secondary">Validate</button>
+      <button id="btnExport" class="btn primary">Export venue.json</button>
+      <button id="btnPushPiSpace" class="btn accent">Push to PiSpace</button>
+    </div>
+  </header>
+
+  <div class="workspace">
+    <!-- Toolbar -->
+    <aside class="toolbar">
+      <button class="tool-btn active" data-tool="select" title="Select & Move Object">
+        <span class="icon">↖</span>
+        <span>Select</span>
+      </button>
+      <button class="tool-btn" data-tool="add-zone" title="Draw 3D Spatial Zone">
+        <span class="icon">⬡</span>
+        <span>Add Zone</span>
+      </button>
+      <button class="tool-btn" data-tool="add-camera" title="Place PTZ Camera">
+        <span class="icon">📷</span>
+        <span>Camera</span>
+      </button>
+      <button class="tool-btn" data-tool="add-occluder" title="Place 3D Occluder (Keymask)">
+        <span class="icon">🛡</span>
+        <span>Occluder</span>
+      </button>
+      <hr>
+      <div class="zoom-controls">
+        <button id="btnZoomIn" title="Zoom In">+</button>
+        <button id="btnZoomReset" title="Reset View">1:1</button>
+        <button id="btnZoomOut" title="Zoom Out">-</button>
+      </div>
+    </aside>
+
+    <!-- Canvas Area -->
+    <main class="canvas-container">
+      <canvas id="mapCanvas"></canvas>
+      <div class="canvas-overlay-hints">
+        <span id="coordsDisplay">X: 0.00 m, Y: 0.00 m</span>
+        <span id="modeDisplay">Mode: Select</span>
+      </div>
+    </main>
+
+    <!-- Properties Panel -->
+    <aside class="inspector">
+      <h2>Venue Properties</h2>
+      <div class="form-group">
+        <label>Venue Name</label>
+        <input type="text" id="venueName" value="Riihimäen Keskuskirkko">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Width (m)</label>
+          <input type="number" id="dimWidth" value="16.0" step="0.5">
+        </div>
+        <div class="form-group">
+          <label>Length (m)</label>
+          <input type="number" id="dimLength" value="30.0" step="0.5">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Origin (0,0,0) Description</label>
+        <input type="text" id="originDesc" value="Sanctuary floor at communion rail center">
+      </div>
+
+      <hr>
+
+      <!-- Selected Item Inspector -->
+      <div id="selectionInspector">
+        <h3>Selection Inspector</h3>
+        <p class="empty-hint">Select a zone, camera, or occluder to inspect and edit.</p>
+        <div id="itemEditor" style="display: none;">
+          <div class="form-group">
+            <label>ID</label>
+            <input type="text" id="itemId">
+          </div>
+          <div class="form-group">
+            <label>Name</label>
+            <input type="text" id="itemName">
+          </div>
+          <div id="zoneFields">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Floor Z (m)</label>
+                <input type="number" id="zoneFloor" step="0.1">
+              </div>
+              <div class="form-group">
+                <label>Ceiling Z (m)</label>
+                <input type="number" id="zoneCeiling" step="0.5">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Color</label>
+              <input type="color" id="zoneColor">
+            </div>
+            <div class="form-group">
+              <label>Tags (comma separated)</label>
+              <input type="text" id="zoneTags">
+            </div>
+          </div>
+          <div id="cameraFields" style="display: none;">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Height Z (m)</label>
+                <input type="number" id="camHeight" step="0.1">
+              </div>
+              <div class="form-group">
+                <label>Base Pan (°)</label>
+                <input type="number" id="camPan" step="1">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Base Tilt (°)</label>
+                <input type="number" id="camTilt" step="1">
+              </div>
+              <div class="form-group">
+                <label>HFOV (°)</label>
+                <input type="number" id="camHfov" value="67" step="1">
+              </div>
+            </div>
+          </div>
+          <div id="occluderFields" style="display: none;">
+            <div class="form-group">
+              <label>Kind</label>
+              <select id="occKind">
+                <option value="mesh">Mesh (.glb asset)</option>
+                <option value="box">Parametric Box</option>
+                <option value="cylinder">Parametric Cylinder</option>
+              </select>
+            </div>
+            <div class="form-group" id="meshUrlGroup">
+              <label>GLB Asset URL / Path</label>
+              <input type="text" id="occMeshUrl" placeholder="models/pulpit-facade.glb">
+            </div>
+          </div>
+          <button id="btnDeleteItem" class="btn danger">Delete Item</button>
+        </div>
+      </div>
+
+      <hr>
+
+      <!-- Validation Output -->
+      <div id="validationBox">
+        <h3>Schema Validation</h3>
+        <div id="validationStatus" class="status-badge ok">Model Valid</div>
+        <ul id="validationIssuesList"></ul>
+      </div>
+    </aside>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

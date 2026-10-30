@@ -1,0 +1,32 @@
+{
+  "name": "church-3d-mapper",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Visual 3D mapping and venue model authoring tool for PiSpace",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "church-3d-mapper": "bin/church-3d-mapper.mjs"
+  },
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "test": "tsx --test tests/*.test.ts"
+  },
+  "dependencies": {
+    "fastify": "^5.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.3"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "src/web"
+  ]
+}
