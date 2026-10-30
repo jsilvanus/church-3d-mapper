@@ -72,6 +72,21 @@ test('validates valid open-bottom wall', () => {
     bottomZ: 3.5, // 3.5m open clearance underneath!
     topZ: 12.0,
     thickness: 0.4,
+    seeThrough: true,
+  }];
+
+  const res = validateVenueModel(model);
+  assert.equal(res.valid, true);
+});
+
+test('validates 4-legged table occluder', () => {
+  const model = createStandardHallTemplate();
+  model.occluders = [{
+    id: 'altar_table',
+    name: 'Altar Table',
+    kind: 'table',
+    position: { x: 0, y: 2, z: 0.4 },
+    dimensions: { width: 2.2, depth: 1.1, height: 0.9 },
   }];
 
   const res = validateVenueModel(model);

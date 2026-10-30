@@ -33,7 +33,7 @@ export interface CameraMount {
 export interface SpatialOccluder {
   id: string;
   name: string;
-  kind: 'mesh' | 'box' | 'cylinder' | 'polygon_wall';
+  kind: 'mesh' | 'box' | 'cylinder' | 'polygon_wall' | 'table';
   meshUrl?: string | undefined;
   position: Point3D;
   rotation?: { x: number; y: number; z: number } | undefined;
@@ -66,6 +66,8 @@ export interface VenueWall {
   /** Wall thickness in meters (e.g. 0.4) */
   thickness: number;
   color?: string | undefined;
+  /** If true, wall is rendered translucent / ghosted in 3D mode so interior is visible */
+  seeThrough?: boolean | undefined;
 }
 
 export interface VenueModel {

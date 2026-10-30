@@ -134,10 +134,10 @@ const KESKUSKIRKKO_TEMPLATE = {
     },
     {
       id: "altar_table",
-      name: "Altar Table",
-      kind: "box",
+      name: "Alttaripöytä (4-Legged Table)",
+      kind: "table",
       position: { x: 0.0, y: 2.5, z: 0.4 },
-      dimensions: { width: 3.2, depth: 1.2, height: 1.0 }
+      dimensions: { width: 3.2, depth: 1.2, height: 0.95 }
     }
   ],
   floors: [
@@ -207,7 +207,8 @@ const KESKUSKIRKKO_TEMPLATE = {
       bottomZ: 0.0,
       topZ: 4.2,
       thickness: 0.4,
-      color: "#334155"
+      color: "#334155",
+      seeThrough: true
     },
     {
       id: "south_side_wall",
@@ -217,7 +218,8 @@ const KESKUSKIRKKO_TEMPLATE = {
       bottomZ: 0.0,
       topZ: 4.2,
       thickness: 0.4,
-      color: "#334155"
+      color: "#334155",
+      seeThrough: true
     },
     {
       id: "east_altar_wall",
@@ -251,6 +253,9 @@ let threeScene = null;
 let threeCamera = null;
 let threeControls = null;
 let threeObjectsGroup = null;
+let globalGhostWalls = false;
+let isMovingObject = false;
+let moveStartWorld = { x: 0, y: 0 };
 const threeRaycaster = new THREE.Raycaster();
 const threeMouse = new THREE.Vector2();
 
@@ -265,6 +270,37 @@ const viewport3d = document.getElementById("viewport3d");
 const view3dControls = document.getElementById("view3dControls");
 const btnView2D = document.getElementById("btnView2D");
 const btnView3D = document.getElementById("btnView3D");
+
+// Zoom and Pan Controls (+, 1:1, -)
+document.getElementById("btnZoomIn")?.addEventListener("click", () => {
+  if (viewMode === "2d") {
+    scale = Math.min(100, Math.round(scale * 1.25));
+    render();
+  } else if (threeCamera && threeControls) {
+    threeCamera.position.sub(threeControls.target).multiplyScalar(0.8).add(threeControls.target);
+  }
+});
+
+document.getElementById("btnZoomOut")?.addEventListener("click", () => {
+  if (viewMode === "2d") {
+    scale = Math.max(5, Math.round(scale * 0.8));
+    render();
+  } else if (threeCamera && threeControls) {
+    threeCamera.position.sub(threeControls.target).multiplyScalar(1.25).add(threeControls.target);
+  }
+});
+
+document.getElementById("btnZoomReset")?.addEventListener("click", () => {
+  if (viewMode === "2d") {
+    scale = 25;
+    originScreen.x = canvas.width / 2;
+    originScreen.y = canvas.height * 0.4;
+    render();
+  } else if (threeCamera && threeControls) {
+    threeCamera.position.set(0, -22, 14);
+    threeControls.target.set(0, 2, 1);
+  }
+});
 
 function resizeCanvas() {
   canvas.width = canvas.parentElement.clientWidth;
@@ -546,6 +582,26 @@ function drawOccluders() {
       ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
+    } else if (occ.kind === "table") {
+      const bw = (occ.dimensions?.width || 2.2) * scale;
+      const bd = (occ.dimensions?.depth || 1.1) * scale;
+      ctx.fillRect(p.x - bw / 2, p.y - bd / 2, bw, bd);
+      ctx.strokeRect(p.x - bw / 2, p.y - bd / 2, bw, bd);
+
+      // Draw 4 table legs
+      const legSize = Math.max(3, 0.08 * scale);
+      const legInsetX = Math.max(legSize, 0.12 * scale);
+      const legInsetY = Math.max(legSize, 0.12 * scale);
+      ctx.fillStyle = "#ffffff";
+      const corners = [
+        { x: p.x - bw / 2 + legInsetX, y: p.y - bd / 2 + legInsetY },
+        { x: p.x + bw / 2 - legInsetX, y: p.y - bd / 2 + legInsetY },
+        { x: p.x - bw / 2 + legInsetX, y: p.y + bd / 2 - legInsetY },
+        { x: p.x + bw / 2 - legInsetX, y: p.y + bd / 2 - legInsetY },
+      ];
+      for (const c of corners) {
+        ctx.fillRect(c.x - legSize / 2, c.y - legSize / 2, legSize, legSize);
+      }
     } else {
       const bw = (occ.dimensions?.width || 1.6) * scale;
       const bd = (occ.dimensions?.depth || 1.0) * scale;
@@ -559,7 +615,10 @@ function drawOccluders() {
     ctx.fillText(`🛡 ${occ.name}`, p.x, p.y - 12);
     ctx.fillStyle = "#fcd34d";
     ctx.font = "9px monospace";
-    ctx.fillText(occ.kind === "mesh" ? `[GLB Holdout]` : `[Keymask]`, p.x, p.y + 16);
+    let badgeText = "[Keymask]";
+    if (occ.kind === "table") badgeText = "[4-Leg Table]";
+    else if (occ.kind === "mesh") badgeText = "[GLB Holdout]";
+    ctx.fillText(badgeText, p.x, p.y + 16);
     ctx.restore();
   }
 }
@@ -649,6 +708,41 @@ function distToSegment(p, v, w) {
   return Math.hypot(p.x - (v.x + t * (w.x - v.x)), p.y - (v.y + t * (w.y - v.y)));
 }
 
+function findItemAt(sx, sy, w) {
+  // 1. Cameras
+  for (const [k, cam] of Object.entries(currentVenue.cameras || {})) {
+    const cp = worldToScreen(cam.position.x, cam.position.y);
+    if (Math.hypot(cp.x - sx, cp.y - sy) < 14) return { type: "camera", ref: cam, key: k };
+  }
+  // 2. Occluders
+  for (const occ of currentVenue.occluders || []) {
+    const op = worldToScreen(occ.position.x, occ.position.y);
+    if (Math.hypot(op.x - sx, op.y - sy) < 16) return { type: "occluder", ref: occ };
+    if ((occ.kind === "box" || occ.kind === "table") && occ.dimensions) {
+      const bw = occ.dimensions.width;
+      const bd = occ.dimensions.depth;
+      if (Math.abs(w.x - occ.position.x) <= bw / 2 && Math.abs(w.y - occ.position.y) <= bd / 2) {
+        return { type: "occluder", ref: occ };
+      }
+    }
+  }
+  // 3. Walls
+  for (const wall of currentVenue.walls || []) {
+    const p1 = worldToScreen(wall.start.x, wall.start.y);
+    const p2 = worldToScreen(wall.end.x, wall.end.y);
+    if (distToSegment({ x: sx, y: sy }, p1, p2) < 12) return { type: "wall", ref: wall };
+  }
+  // 4. Zones
+  for (const z of currentVenue.zones || []) {
+    if (pointInPoly(w, z.polygon)) return { type: "zone", ref: z };
+  }
+  // 5. Floors
+  for (const f of currentVenue.floors || []) {
+    if (pointInPoly(w, f.polygon)) return { type: "floor", ref: f };
+  }
+  return null;
+}
+
 // Interaction
 canvas.addEventListener("mousemove", (e) => {
   const rect = canvas.getBoundingClientRect();
@@ -664,6 +758,30 @@ canvas.addEventListener("mousemove", (e) => {
     originScreen.y += sy - startPan.y;
     startPan = { x: sx, y: sy };
     render();
+    return;
+  }
+
+  if (isMovingObject && selectedItem) {
+    const dx = w.x - moveStartWorld.x;
+    const dy = w.y - moveStartWorld.y;
+    moveStartWorld = { x: w.x, y: w.y };
+
+    if (selectedItem.type === "camera" || selectedItem.type === "occluder") {
+      selectedItem.ref.position.x += dx;
+      selectedItem.ref.position.y += dy;
+    } else if (selectedItem.type === "zone" || selectedItem.type === "floor") {
+      for (const pt of selectedItem.ref.polygon) {
+        pt.x += dx;
+        pt.y += dy;
+      }
+    } else if (selectedItem.type === "wall") {
+      selectedItem.ref.start.x += dx;
+      selectedItem.ref.start.y += dy;
+      selectedItem.ref.end.x += dx;
+      selectedItem.ref.end.y += dy;
+    }
+    render();
+    if (viewMode === "3d") update3DScene();
     return;
   }
 
@@ -691,6 +809,17 @@ canvas.addEventListener("mousedown", (e) => {
     return;
   }
 
+  if (currentTool === "move") {
+    const item = findItemAt(sx, sy, w) || selectedItem;
+    if (item) {
+      selectItem(item);
+      isMovingObject = true;
+      moveStartWorld = { x: w.x, y: w.y };
+      canvas.style.cursor = "grabbing";
+    }
+    return;
+  }
+
   if (currentTool === "select") {
     // 1. Check if clicked vertex handle
     if (selectedItem?.type === "zone" || selectedItem?.type === "floor") {
@@ -703,57 +832,8 @@ canvas.addEventListener("mousedown", (e) => {
       }
     }
 
-    // 2. Hit test cameras first (small point targets take priority over enclosing zones)
-    for (const [k, cam] of Object.entries(currentVenue.cameras || {})) {
-      const cp = worldToScreen(cam.position.x, cam.position.y);
-      if (Math.hypot(cp.x - sx, cp.y - sy) < 14) {
-        selectItem({ type: "camera", ref: cam, key: k });
-        render();
-        return;
-      }
-    }
-
-    // 3. Hit test occluders
-    for (const occ of currentVenue.occluders || []) {
-      const op = worldToScreen(occ.position.x, occ.position.y);
-      if (Math.hypot(op.x - sx, op.y - sy) < 14) {
-        selectItem({ type: "occluder", ref: occ });
-        render();
-        return;
-      }
-    }
-
-    // 4. Hit test walls
-    for (const wall of currentVenue.walls || []) {
-      const p1 = worldToScreen(wall.start.x, wall.start.y);
-      const p2 = worldToScreen(wall.end.x, wall.end.y);
-      const d = distToSegment({ x: sx, y: sy }, p1, p2);
-      if (d < 10) {
-        selectItem({ type: "wall", ref: wall });
-        render();
-        return;
-      }
-    }
-
-    // 5. Hit test zones
-    for (const z of currentVenue.zones || []) {
-      if (pointInPoly(w, z.polygon)) {
-        selectItem({ type: "zone", ref: z });
-        render();
-        return;
-      }
-    }
-
-    // 6. Hit test floors
-    for (const f of currentVenue.floors || []) {
-      if (pointInPoly(w, f.polygon)) {
-        selectItem({ type: "floor", ref: f });
-        render();
-        return;
-      }
-    }
-
-    selectItem(null);
+    const item = findItemAt(sx, sy, w);
+    selectItem(item);
     render();
   } else if (currentTool === "add-zone") {
     currentDraftPolygon.push({ x: Math.round(w.x * 10) / 10, y: Math.round(w.y * 10) / 10 });
@@ -935,6 +1015,8 @@ function selectItem(item) {
     document.getElementById("wallTopZ").value = item.ref.topZ ?? 14.0;
     document.getElementById("wallThickness").value = item.ref.thickness ?? 0.45;
     document.getElementById("wallColor").value = item.ref.color || "#475569";
+    const stBox = document.getElementById("wallSeeThrough");
+    if (stBox) stBox.checked = !!item.ref.seeThrough;
   } else if (item.type === "occluder") {
     document.getElementById("occKind").value = item.ref.kind || "box";
     document.getElementById("occMeshUrl").value = item.ref.meshUrl || "";
@@ -1104,6 +1186,13 @@ document.getElementById("wallThickness").addEventListener("input", (e) => {
 document.getElementById("wallColor").addEventListener("input", (e) => {
   if (selectedItem?.type === "wall") {
     selectedItem.ref.color = e.target.value;
+    render();
+    if (viewMode === "3d") update3DScene();
+  }
+});
+document.getElementById("wallSeeThrough")?.addEventListener("change", (e) => {
+  if (selectedItem?.type === "wall") {
+    selectedItem.ref.seeThrough = e.target.checked;
     render();
     if (viewMode === "3d") update3DScene();
   }
@@ -1494,11 +1583,13 @@ function update3DScene() {
 
       const boxGeo = new THREE.BoxGeometry(len, thick, h);
       const isOpen = bZ > 0;
+      const isSeeThrough = wall.seeThrough || globalGhostWalls;
       const wallMat = new THREE.MeshStandardMaterial({
-        color: isOpen ? 0x64748b : 0x334155,
-        transparent: isOpen,
-        opacity: isOpen ? 0.85 : 0.95,
-        roughness: 0.7
+        color: isSeeThrough ? 0x93c5fd : (isOpen ? 0x64748b : 0x334155),
+        transparent: isSeeThrough || isOpen,
+        opacity: isSeeThrough ? 0.22 : (isOpen ? 0.85 : 0.95),
+        roughness: 0.7,
+        depthWrite: !isSeeThrough
       });
 
       const wallMesh = new THREE.Mesh(boxGeo, wallMat);
@@ -1512,7 +1603,7 @@ function update3DScene() {
 
       const wireGeo = new THREE.EdgesGeometry(boxGeo);
       const wireMat = new THREE.LineBasicMaterial({
-        color: isSelected ? 0x38bdf8 : (isOpen ? 0x94a3b8 : 0x1e293b),
+        color: isSelected ? 0x38bdf8 : (isSeeThrough ? 0x93c5fd : (isOpen ? 0x94a3b8 : 0x1e293b)),
         linewidth: isSelected ? 2 : 1
       });
       wallMesh.add(new THREE.LineSegments(wireGeo, wireMat));
@@ -1645,7 +1736,47 @@ function update3DScene() {
       });
 
       let occMesh;
-      if (occ.kind === "cylinder") {
+      if (occ.kind === "table") {
+        const w = occ.dimensions?.width ?? 2.2;
+        const d = occ.dimensions?.depth ?? 1.1;
+        const totalH = occ.dimensions?.height ?? 0.85;
+        const topThick = 0.08;
+        const legThick = 0.08;
+        const legH = Math.max(0.1, totalH - topThick);
+        const bZ = occ.position?.z ?? 0.0;
+
+        const tableGroup = new THREE.Group();
+
+        // 1. Tabletop slab
+        const topGeo = new THREE.BoxGeometry(w, d, topThick);
+        const topMesh = new THREE.Mesh(topGeo, occMat);
+        topMesh.position.set(0, 0, bZ + totalH - topThick / 2);
+        tableGroup.add(topMesh);
+
+        const wireTop = new THREE.EdgesGeometry(topGeo);
+        topMesh.add(new THREE.LineSegments(wireTop, new THREE.LineBasicMaterial({
+          color: isSelected ? 0xef4444 : 0xf59e0b,
+          linewidth: 2
+        })));
+
+        // 2. Four Legs (Open air underneath between legs!)
+        const xOffsets = [w / 2 - 0.12, -w / 2 + 0.12];
+        const yOffsets = [d / 2 - 0.12, -d / 2 + 0.12];
+        const legGeo = new THREE.BoxGeometry(legThick, legThick, legH);
+
+        for (const lx of xOffsets) {
+          for (const ly of yOffsets) {
+            const legMesh = new THREE.Mesh(legGeo, occMat);
+            legMesh.position.set(lx, ly, bZ + legH / 2);
+            tableGroup.add(legMesh);
+          }
+        }
+
+        tableGroup.position.set(occ.position.x, occ.position.y, 0);
+        tableGroup.userData = { item: { type: "occluder", ref: occ } };
+        threeObjectsGroup.add(tableGroup);
+        continue;
+      } else if (occ.kind === "cylinder") {
         const rad = occ.dimensions?.radius ?? 0.8;
         const h = occ.dimensions?.height ?? 1.5;
         const cylGeo = new THREE.CylinderGeometry(rad, rad, h, 20);
@@ -1709,6 +1840,13 @@ document.getElementById("btn3dFocusChoir")?.addEventListener("click", () => {
   if (!threeCamera || !threeControls) return;
   threeCamera.position.set(1.5, -3.0, 3.0);
   threeControls.target.set(4.5, 2.0, 1.0);
+});
+
+document.getElementById("btn3dGhostWalls")?.addEventListener("click", () => {
+  globalGhostWalls = !globalGhostWalls;
+  const btn = document.getElementById("btn3dGhostWalls");
+  if (btn) btn.classList.toggle("active", globalGhostWalls);
+  update3DScene();
 });
 
 document.getElementById("btn3dReset")?.addEventListener("click", () => {

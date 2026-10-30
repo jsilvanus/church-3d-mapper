@@ -137,13 +137,13 @@ export function validateVenueModel(model: unknown): ValidationResult {
         if (!o.id || typeof o.id !== 'string') {
           issues.push({ path: `${prefix}.id`, message: 'Occluder id is required', severity: 'error' });
         }
-        if (!['mesh', 'box', 'cylinder', 'polygon_wall'].includes(o.kind)) {
-          issues.push({ path: `${prefix}.kind`, message: 'Kind must be mesh, box, cylinder, or polygon_wall', severity: 'error' });
+        if (!['mesh', 'box', 'cylinder', 'polygon_wall', 'table'].includes(o.kind)) {
+          issues.push({ path: `${prefix}.kind`, message: 'Kind must be mesh, box, cylinder, polygon_wall, or table', severity: 'error' });
         }
         if (o.kind === 'mesh' && (!o.meshUrl || typeof o.meshUrl !== 'string')) {
           issues.push({ path: `${prefix}.meshUrl`, message: 'Mesh occluder requires meshUrl (.glb/.gltf path)', severity: 'error' });
         }
-        if (['box', 'cylinder'].includes(o.kind)) {
+        if (['box', 'cylinder', 'table'].includes(o.kind)) {
           if (!o.dimensions || typeof o.dimensions.width !== 'number' || typeof o.dimensions.height !== 'number') {
             issues.push({ path: `${prefix}.dimensions`, message: 'Parametric occluder requires width and height dimensions', severity: 'error' });
           }
