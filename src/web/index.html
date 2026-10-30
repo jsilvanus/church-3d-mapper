@@ -53,11 +53,19 @@
         <span class="icon">⬡</span>
         <span>Add Zone</span>
       </button>
+      <button class="tool-btn" data-tool="add-floor" title="Draw Elevated Floor Platform (e.g. Altar Dais)">
+        <span class="icon">🪜</span>
+        <span>Floor</span>
+      </button>
+      <button class="tool-btn" data-tool="add-wall" title="Draw Wall or Open-Bottom Arch Header">
+        <span class="icon">🧱</span>
+        <span>Wall</span>
+      </button>
       <button class="tool-btn" data-tool="add-camera" title="Place PTZ Camera">
         <span class="icon">📷</span>
         <span>Camera</span>
       </button>
-      <button class="tool-btn" data-tool="add-occluder" title="Place 3D Occluder (Keymask)">
+      <button class="tool-btn" data-tool="add-occluder" title="Place 3D Occluder (Keymask Holdout Mesh)">
         <span class="icon">🛡</span>
         <span>Occluder</span>
       </button>
@@ -110,10 +118,23 @@
 
       <hr>
 
+      <!-- Scene Hierarchy / Object List -->
+      <div id="hierarchySection">
+        <div class="hierarchy-header">
+          <h3>Scene Objects</h3>
+          <span id="objectCountBadge" class="count-badge">0</span>
+        </div>
+        <div id="sceneObjectList" class="scene-object-list">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+
+      <hr>
+
       <!-- Selected Item Inspector -->
       <div id="selectionInspector">
         <h3>Selection Inspector</h3>
-        <p class="empty-hint">Select a zone, camera, or occluder to inspect and edit.</p>
+        <p class="empty-hint">Select a zone, camera, wall, floor, or occluder to inspect and edit.</p>
         <div id="itemEditor" style="display: none;">
           <div class="form-group">
             <label>ID</label>
@@ -143,6 +164,44 @@
               <input type="text" id="zoneTags">
             </div>
           </div>
+          <div id="floorFields" style="display: none;">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Elevation Z (m)</label>
+                <input type="number" id="floorElevation" step="0.05">
+              </div>
+              <div class="form-group">
+                <label>Slab Thickness (m)</label>
+                <input type="number" id="floorThickness" step="0.05">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Floor Tone Color</label>
+              <input type="color" id="floorColor" value="#2c3e50">
+            </div>
+          </div>
+          <div id="wallFields" style="display: none;">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Bottom Z (m) (0 = Floor, >0 = Arch Open Bottom)</label>
+                <input type="number" id="wallBottomZ" step="0.1">
+              </div>
+              <div class="form-group">
+                <label>Top Z (m) (e.g. 14m or 4.2m)</label>
+                <input type="number" id="wallTopZ" step="0.1">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Thickness (m)</label>
+                <input type="number" id="wallThickness" step="0.05">
+              </div>
+              <div class="form-group">
+                <label>Wall Color</label>
+                <input type="color" id="wallColor" value="#475569">
+              </div>
+            </div>
+          </div>
           <div id="cameraFields" style="display: none;">
             <div class="form-row">
               <div class="form-group">
@@ -169,14 +228,32 @@
             <div class="form-group">
               <label>Kind</label>
               <select id="occKind">
-                <option value="mesh">Mesh (.glb asset)</option>
                 <option value="box">Parametric Box</option>
                 <option value="cylinder">Parametric Cylinder</option>
+                <option value="mesh">Mesh (.glb asset)</option>
               </select>
             </div>
             <div class="form-group" id="meshUrlGroup">
               <label>GLB Asset URL / Path</label>
               <input type="text" id="occMeshUrl" placeholder="models/pulpit-facade.glb">
+            </div>
+            <div class="form-row" id="occDimRow">
+              <div class="form-group">
+                <label>Width (m)</label>
+                <input type="number" id="occWidth" step="0.1">
+              </div>
+              <div class="form-group">
+                <label>Depth (m)</label>
+                <input type="number" id="occDepth" step="0.1">
+              </div>
+              <div class="form-group">
+                <label>Height (m)</label>
+                <input type="number" id="occHeight" step="0.1">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Base Elevation Z (m)</label>
+              <input type="number" id="occBaseZ" step="0.1">
             </div>
           </div>
           <button id="btnDeleteItem" class="btn danger">Delete Item</button>

@@ -129,7 +129,8 @@ const KESKUSKIRKKO_TEMPLATE = {
       meshUrl: "models/pulpit-facade.glb",
       position: { x: -3.5, y: 0.5, z: 1.3 },
       rotation: { x: 0, y: 0, z: 0 },
-      scale: { x: 1.0, y: 1.0, z: 1.0 }
+      scale: { x: 1.0, y: 1.0, z: 1.0 },
+      dimensions: { width: 1.8, depth: 1.4, height: 1.2 }
     },
     {
       id: "altar_table",
@@ -138,6 +139,96 @@ const KESKUSKIRKKO_TEMPLATE = {
       position: { x: 0.0, y: 2.5, z: 0.4 },
       dimensions: { width: 3.2, depth: 1.2, height: 1.0 }
     }
+  ],
+  floors: [
+    {
+      id: "altar_chancel_dais",
+      name: "Alttarikoroke (Chancel Dais +0.40m)",
+      elevation: 0.40,
+      thickness: 0.40,
+      color: "#252e3d",
+      polygon: [
+        { x: -5.0, y: 0.0 },
+        { x: 5.0, y: 0.0 },
+        { x: 5.0, y: 5.6 },
+        { x: -5.0, y: 5.6 }
+      ]
+    },
+    {
+      id: "organ_gallery_floor",
+      name: "Urkuparven Lattia (Organ Gallery +4.50m)",
+      elevation: 4.50,
+      thickness: 0.50,
+      color: "#1e293b",
+      polygon: [
+        { x: -7.5, y: -14.8 },
+        { x: 7.5, y: -14.8 },
+        { x: 7.5, y: -10.5 },
+        { x: -7.5, y: -10.5 }
+      ]
+    }
+  ],
+  walls: [
+    {
+      id: "north_arcade_header",
+      name: "North Arcade Wall (Open Bottom Arch)",
+      start: { x: -4.8, y: -10.5 },
+      end: { x: -4.8, y: 5.5 },
+      bottomZ: 3.8,
+      topZ: 14.0,
+      thickness: 0.45,
+      color: "#475569"
+    },
+    {
+      id: "south_arcade_header",
+      name: "South Arcade Wall (Open Bottom Arch)",
+      start: { x: 4.8, y: -10.5 },
+      end: { x: 4.8, y: 5.5 },
+      bottomZ: 3.8,
+      topZ: 14.0,
+      thickness: 0.45,
+      color: "#475569"
+    },
+    {
+      id: "chancel_arch_header",
+      name: "Chancel Triumphal Arch (Open Bottom)",
+      start: { x: -4.8, y: 0.1 },
+      end: { x: 4.8, y: 0.1 },
+      bottomZ: 5.2,
+      topZ: 14.0,
+      thickness: 0.5,
+      color: "#526071"
+    },
+    {
+      id: "north_side_wall",
+      name: "North Side Aisle Wall (Lower Ceiling 4.2m)",
+      start: { x: -8.0, y: -14.8 },
+      end: { x: -8.0, y: 5.8 },
+      bottomZ: 0.0,
+      topZ: 4.2,
+      thickness: 0.4,
+      color: "#334155"
+    },
+    {
+      id: "south_side_wall",
+      name: "South Side Aisle Wall (Lower Ceiling 4.2m)",
+      start: { x: 8.0, y: -14.8 },
+      end: { x: 8.0, y: 5.8 },
+      bottomZ: 0.0,
+      topZ: 4.2,
+      thickness: 0.4,
+      color: "#334155"
+    },
+    {
+      id: "east_altar_wall",
+      name: "East Altar Wall",
+      start: { x: -5.0, y: 5.8 },
+      end: { x: 5.0, y: 5.8 },
+      bottomZ: 0.0,
+      topZ: 14.0,
+      thickness: 0.5,
+      color: "#334155"
+    }
   ]
 };
 
@@ -145,8 +236,10 @@ let currentVenue = JSON.parse(JSON.stringify(KESKUSKIRKKO_TEMPLATE));
 
 // State
 let currentTool = "select";
-let selectedItem = null; // { type: 'zone'|'camera'|'occluder', ref: object, key?: string }
+let selectedItem = null; // { type: 'zone'|'camera'|'occluder'|'floor'|'wall', ref: object, key?: string }
 let currentDraftPolygon = [];
+let currentWallStart = null;
+let currentMouseWorld = { x: 0, y: 0 };
 let draggingVertex = null; // { zone, vertexIndex }
 let isPanning = false;
 let startPan = { x: 0, y: 0 };
@@ -207,10 +300,14 @@ function render() {
 
   drawGrid();
   drawSanctuaryEnvelope();
+  drawFloors();
+  drawWalls();
   drawZones();
   drawOccluders();
   drawCameras();
   drawDraftPolygon();
+  drawDraftWall();
+  updateObjectList();
 }
 
 function drawGrid() {
@@ -275,6 +372,111 @@ function drawSanctuaryEnvelope() {
   ctx.restore();
 }
 
+function drawFloors() {
+  if (!currentVenue.floors) return;
+
+  for (const floor of currentVenue.floors) {
+    if (!floor.polygon || floor.polygon.length < 3) continue;
+
+    ctx.save();
+    const isSelected = selectedItem?.ref === floor;
+    ctx.fillStyle = hexToRgba(floor.color || "#2c3e50", isSelected ? 0.6 : 0.35);
+    ctx.strokeStyle = isSelected ? "#ffffff" : "#64748b";
+    ctx.lineWidth = isSelected ? 2.5 : 1.5;
+
+    ctx.beginPath();
+    const p0 = worldToScreen(floor.polygon[0].x, floor.polygon[0].y);
+    ctx.moveTo(p0.x, p0.y);
+    for (let i = 1; i < floor.polygon.length; i++) {
+      const pi = worldToScreen(floor.polygon[i].x, floor.polygon[i].y);
+      ctx.lineTo(pi.x, pi.y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Centroid Label
+    let cx = 0, cy = 0;
+    for (const pt of floor.polygon) { cx += pt.x; cy += pt.y; }
+    cx /= floor.polygon.length;
+    cy /= floor.polygon.length;
+    const centerScreen = worldToScreen(cx, cy);
+
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 10px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(`🪜 ${floor.name}`, centerScreen.x, centerScreen.y - 4);
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "9px monospace";
+    ctx.fillText(`Elev: +${floor.elevation}m (Thick: ${floor.thickness || 0.4}m)`, centerScreen.x, centerScreen.y + 8);
+
+    ctx.restore();
+  }
+}
+
+function drawWalls() {
+  if (!currentVenue.walls) return;
+
+  for (const wall of currentVenue.walls) {
+    const isSelected = selectedItem?.ref === wall;
+    const isOpen = (wall.bottomZ || 0) > 0;
+    const p1 = worldToScreen(wall.start.x, wall.start.y);
+    const p2 = worldToScreen(wall.end.x, wall.end.y);
+
+    ctx.save();
+    ctx.lineWidth = Math.max(3, (wall.thickness || 0.4) * scale);
+    ctx.lineCap = "round";
+
+    if (isOpen) {
+      // Open-bottom arch header: dashed architectural representation
+      ctx.strokeStyle = isSelected ? "#38bdf8" : "#94a3b8";
+      ctx.setLineDash([8, 4]);
+    } else {
+      ctx.strokeStyle = isSelected ? "#38bdf8" : (wall.color || "#475569");
+    }
+
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.stroke();
+
+    // Midpoint label
+    const midX = (p1.x + p2.x) / 2;
+    const midY = (p1.y + p2.y) / 2;
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "9px sans-serif";
+    ctx.textAlign = "center";
+    if (isOpen) {
+      ctx.fillText(`⇡ Arch Lintel (${wall.bottomZ}m–${wall.topZ}m)`, midX, midY - 6);
+    } else {
+      ctx.fillText(`🧱 ${wall.name}`, midX, midY - 6);
+    }
+
+    ctx.restore();
+  }
+}
+
+function drawDraftWall() {
+  if (!currentWallStart) return;
+  const p1 = worldToScreen(currentWallStart.x, currentWallStart.y);
+  const p2 = worldToScreen(currentMouseWorld.x, currentMouseWorld.y);
+
+  ctx.save();
+  ctx.strokeStyle = "#38bdf8";
+  ctx.lineWidth = 3;
+  ctx.setLineDash([6, 6]);
+  ctx.beginPath();
+  ctx.moveTo(p1.x, p1.y);
+  ctx.lineTo(p2.x, p2.y);
+  ctx.stroke();
+
+  ctx.fillStyle = "#38bdf8";
+  ctx.beginPath();
+  ctx.arc(p1.x, p1.y, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
 function drawZones() {
   for (const zone of currentVenue.zones) {
     if (!zone.polygon || zone.polygon.length < 3) continue;
@@ -334,26 +536,30 @@ function drawOccluders() {
     const isSelected = selectedItem?.ref === occ;
 
     ctx.save();
-    ctx.fillStyle = isSelected ? "#f59e0b" : "#d97706";
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = isSelected ? 2 : 1;
+    ctx.fillStyle = isSelected ? "rgba(239, 68, 68, 0.4)" : "rgba(217, 119, 6, 0.35)";
+    ctx.strokeStyle = isSelected ? "#ffffff" : "#f59e0b";
+    ctx.lineWidth = isSelected ? 2.5 : 1.5;
 
-    if (occ.kind === "box" && occ.dimensions) {
-      const bw = occ.dimensions.width * scale;
-      const bd = occ.dimensions.depth * scale;
-      ctx.fillRect(p.x - bw / 2, p.y - bd / 2, bw, bd);
-      ctx.strokeRect(p.x - bw / 2, p.y - bd / 2, bw, bd);
-    } else {
+    if (occ.kind === "cylinder") {
+      const rad = (occ.dimensions?.radius || 0.8) * scale;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
+    } else {
+      const bw = (occ.dimensions?.width || 1.6) * scale;
+      const bd = (occ.dimensions?.depth || 1.0) * scale;
+      ctx.fillRect(p.x - bw / 2, p.y - bd / 2, bw, bd);
+      ctx.strokeRect(p.x - bw / 2, p.y - bd / 2, bw, bd);
     }
 
     ctx.fillStyle = "#ffffff";
-    ctx.font = "10px sans-serif";
+    ctx.font = "bold 10px sans-serif";
     ctx.textAlign = "center";
     ctx.fillText(`🛡 ${occ.name}`, p.x, p.y - 12);
+    ctx.fillStyle = "#fcd34d";
+    ctx.font = "9px monospace";
+    ctx.fillText(occ.kind === "mesh" ? `[GLB Holdout]` : `[Keymask]`, p.x, p.y + 16);
     ctx.restore();
   }
 }
@@ -435,12 +641,21 @@ function hexToRgba(hex, alpha) {
   return `rgba(${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}, ${alpha})`;
 }
 
+function distToSegment(p, v, w) {
+  const l2 = (v.x - w.x) ** 2 + (v.y - w.y) ** 2;
+  if (l2 === 0) return Math.hypot(p.x - v.x, p.y - v.y);
+  let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p.x - (v.x + t * (w.x - v.x)), p.y - (v.y + t * (w.y - v.y)));
+}
+
 // Interaction
 canvas.addEventListener("mousemove", (e) => {
   const rect = canvas.getBoundingClientRect();
   const sx = e.clientX - rect.left;
   const sy = e.clientY - rect.top;
   const w = screenToWorld(sx, sy);
+  currentMouseWorld = w;
 
   document.getElementById("coordsDisplay").innerText = `X: ${w.x.toFixed(2)} m, Y: ${w.y.toFixed(2)} m`;
 
@@ -455,6 +670,11 @@ canvas.addEventListener("mousemove", (e) => {
   if (draggingVertex) {
     draggingVertex.zone.polygon[draggingVertex.vertexIndex].x = Math.round(w.x * 10) / 10;
     draggingVertex.zone.polygon[draggingVertex.vertexIndex].y = Math.round(w.y * 10) / 10;
+    render();
+    return;
+  }
+
+  if (currentWallStart) {
     render();
   }
 });
@@ -472,8 +692,8 @@ canvas.addEventListener("mousedown", (e) => {
   }
 
   if (currentTool === "select") {
-    // Check if clicked vertex handle
-    if (selectedItem?.type === "zone") {
+    // 1. Check if clicked vertex handle
+    if (selectedItem?.type === "zone" || selectedItem?.type === "floor") {
       for (let i = 0; i < selectedItem.ref.polygon.length; i++) {
         const vp = worldToScreen(selectedItem.ref.polygon[i].x, selectedItem.ref.polygon[i].y);
         if (Math.hypot(vp.x - sx, vp.y - sy) < 8) {
@@ -483,8 +703,40 @@ canvas.addEventListener("mousedown", (e) => {
       }
     }
 
-    // Hit test zones
-    for (const z of currentVenue.zones) {
+    // 2. Hit test cameras first (small point targets take priority over enclosing zones)
+    for (const [k, cam] of Object.entries(currentVenue.cameras || {})) {
+      const cp = worldToScreen(cam.position.x, cam.position.y);
+      if (Math.hypot(cp.x - sx, cp.y - sy) < 14) {
+        selectItem({ type: "camera", ref: cam, key: k });
+        render();
+        return;
+      }
+    }
+
+    // 3. Hit test occluders
+    for (const occ of currentVenue.occluders || []) {
+      const op = worldToScreen(occ.position.x, occ.position.y);
+      if (Math.hypot(op.x - sx, op.y - sy) < 14) {
+        selectItem({ type: "occluder", ref: occ });
+        render();
+        return;
+      }
+    }
+
+    // 4. Hit test walls
+    for (const wall of currentVenue.walls || []) {
+      const p1 = worldToScreen(wall.start.x, wall.start.y);
+      const p2 = worldToScreen(wall.end.x, wall.end.y);
+      const d = distToSegment({ x: sx, y: sy }, p1, p2);
+      if (d < 10) {
+        selectItem({ type: "wall", ref: wall });
+        render();
+        return;
+      }
+    }
+
+    // 5. Hit test zones
+    for (const z of currentVenue.zones || []) {
       if (pointInPoly(w, z.polygon)) {
         selectItem({ type: "zone", ref: z });
         render();
@@ -492,11 +744,10 @@ canvas.addEventListener("mousedown", (e) => {
       }
     }
 
-    // Hit test cameras
-    for (const [k, cam] of Object.entries(currentVenue.cameras)) {
-      const cp = worldToScreen(cam.position.x, cam.position.y);
-      if (Math.hypot(cp.x - sx, cp.y - sy) < 12) {
-        selectItem({ type: "camera", ref: cam, key: k });
+    // 6. Hit test floors
+    for (const f of currentVenue.floors || []) {
+      if (pointInPoly(w, f.polygon)) {
+        selectItem({ type: "floor", ref: f });
         render();
         return;
       }
@@ -507,8 +758,37 @@ canvas.addEventListener("mousedown", (e) => {
   } else if (currentTool === "add-zone") {
     currentDraftPolygon.push({ x: Math.round(w.x * 10) / 10, y: Math.round(w.y * 10) / 10 });
     render();
+  } else if (currentTool === "add-floor") {
+    currentDraftPolygon.push({ x: Math.round(w.x * 10) / 10, y: Math.round(w.y * 10) / 10 });
+    render();
+  } else if (currentTool === "add-wall") {
+    const pt = { x: Math.round(w.x * 10) / 10, y: Math.round(w.y * 10) / 10 };
+    if (!currentWallStart) {
+      currentWallStart = pt;
+      render();
+    } else {
+      currentVenue.walls = currentVenue.walls || [];
+      const wallId = `wall_${Date.now().toString().slice(-4)}`;
+      const newWall = {
+        id: wallId,
+        name: `Wall Segment`,
+        start: { x: currentWallStart.x, y: currentWallStart.y },
+        end: pt,
+        bottomZ: 0.0,
+        topZ: currentVenue.dimensions?.heightMeters || 14.0,
+        thickness: 0.45,
+        color: "#475569"
+      };
+      currentVenue.walls.push(newWall);
+      currentWallStart = null;
+      setTool("select");
+      selectItem({ type: "wall", ref: newWall });
+      render();
+      if (viewMode === "3d") update3DScene();
+    }
   } else if (currentTool === "add-camera") {
-    const camId = `cam${Object.keys(currentVenue.cameras).length + 1}`;
+    const camId = `cam${Object.keys(currentVenue.cameras || {}).length + 1}`;
+    currentVenue.cameras = currentVenue.cameras || {};
     currentVenue.cameras[camId] = {
       id: camId,
       name: `Camera ${Object.keys(currentVenue.cameras).length + 1}`,
@@ -518,6 +798,22 @@ canvas.addEventListener("mousedown", (e) => {
     setTool("select");
     selectItem({ type: "camera", ref: currentVenue.cameras[camId], key: camId });
     render();
+    if (viewMode === "3d") update3DScene();
+  } else if (currentTool === "add-occluder") {
+    currentVenue.occluders = currentVenue.occluders || [];
+    const occId = `occ_${Date.now().toString().slice(-4)}`;
+    const newOcc = {
+      id: occId,
+      name: `Occluder ${currentVenue.occluders.length + 1}`,
+      kind: "box",
+      position: { x: Math.round(w.x * 10) / 10, y: Math.round(w.y * 10) / 10, z: 0.0 },
+      dimensions: { width: 1.6, depth: 1.0, height: 1.2 }
+    };
+    currentVenue.occluders.push(newOcc);
+    setTool("select");
+    selectItem({ type: "occluder", ref: newOcc });
+    render();
+    if (viewMode === "3d") update3DScene();
   }
 });
 
@@ -537,6 +833,23 @@ canvas.addEventListener("dblclick", () => {
     setTool("select");
     selectItem({ type: "zone", ref: newZone });
     render();
+    if (viewMode === "3d") update3DScene();
+  } else if (currentTool === "add-floor" && currentDraftPolygon.length >= 3) {
+    currentVenue.floors = currentVenue.floors || [];
+    const newFloor = {
+      id: `floor_${Date.now().toString().slice(-4)}`,
+      name: `Raised Platform (+0.40m)`,
+      elevation: 0.40,
+      thickness: 0.40,
+      color: "#2c3e50",
+      polygon: [...currentDraftPolygon]
+    };
+    currentVenue.floors.push(newFloor);
+    currentDraftPolygon = [];
+    setTool("select");
+    selectItem({ type: "floor", ref: newFloor });
+    render();
+    if (viewMode === "3d") update3DScene();
   }
 });
 
@@ -571,8 +884,11 @@ document.querySelectorAll(".tool-btn").forEach((btn) => {
 
 function setTool(tool) {
   currentTool = tool;
+  if (tool !== "add-wall") currentWallStart = null;
+  if (tool !== "add-zone" && tool !== "add-floor") currentDraftPolygon = [];
   document.querySelectorAll(".tool-btn").forEach((b) => b.classList.toggle("active", b.getAttribute("data-tool") === tool));
   document.getElementById("modeDisplay").innerText = `Mode: ${tool.toUpperCase()}`;
+  render();
 }
 
 // Selection & Inspector Binding
@@ -584,6 +900,7 @@ function selectItem(item) {
   if (!item) {
     editor.style.display = "none";
     emptyHint.style.display = "block";
+    updateObjectList();
     if (viewMode === "3d") update3DScene();
     return;
   }
@@ -593,29 +910,118 @@ function selectItem(item) {
 
   document.getElementById("zoneFields").style.display = item.type === "zone" ? "block" : "none";
   document.getElementById("cameraFields").style.display = item.type === "camera" ? "block" : "none";
+  document.getElementById("floorFields").style.display = item.type === "floor" ? "block" : "none";
+  document.getElementById("wallFields").style.display = item.type === "wall" ? "block" : "none";
   document.getElementById("occluderFields").style.display = item.type === "occluder" ? "block" : "none";
 
-  document.getElementById("itemId").value = item.ref.id;
-  document.getElementById("itemName").value = item.ref.name;
+  document.getElementById("itemId").value = item.ref.id || "";
+  document.getElementById("itemName").value = item.ref.name || "";
 
   if (item.type === "zone") {
-    document.getElementById("zoneFloor").value = item.ref.floorHeight;
-    document.getElementById("zoneCeiling").value = item.ref.ceilingHeight;
+    document.getElementById("zoneFloor").value = item.ref.floorHeight ?? 0;
+    document.getElementById("zoneCeiling").value = item.ref.ceilingHeight ?? 3.5;
     document.getElementById("zoneColor").value = item.ref.color || "#3b82f6";
     document.getElementById("zoneTags").value = (item.ref.tags || []).join(", ");
   } else if (item.type === "camera") {
-    document.getElementById("camHeight").value = item.ref.position.z;
-    document.getElementById("camPan").value = item.ref.baseOrientation.pan;
-    document.getElementById("camTilt").value = item.ref.baseOrientation.tilt;
+    document.getElementById("camHeight").value = item.ref.position?.z ?? 3.5;
+    document.getElementById("camPan").value = item.ref.baseOrientation?.pan ?? 0;
+    document.getElementById("camTilt").value = item.ref.baseOrientation?.tilt ?? -10;
+  } else if (item.type === "floor") {
+    document.getElementById("floorElevation").value = item.ref.elevation ?? 0.4;
+    document.getElementById("floorThickness").value = item.ref.thickness ?? 0.4;
+    document.getElementById("floorColor").value = item.ref.color || "#2c3e50";
+  } else if (item.type === "wall") {
+    document.getElementById("wallBottomZ").value = item.ref.bottomZ ?? 0.0;
+    document.getElementById("wallTopZ").value = item.ref.topZ ?? 14.0;
+    document.getElementById("wallThickness").value = item.ref.thickness ?? 0.45;
+    document.getElementById("wallColor").value = item.ref.color || "#475569";
+  } else if (item.type === "occluder") {
+    document.getElementById("occKind").value = item.ref.kind || "box";
+    document.getElementById("occMeshUrl").value = item.ref.meshUrl || "";
+    document.getElementById("occWidth").value = item.ref.dimensions?.width ?? 1.5;
+    document.getElementById("occDepth").value = item.ref.dimensions?.depth ?? 1.0;
+    document.getElementById("occHeight").value = item.ref.dimensions?.height ?? 1.2;
+    document.getElementById("occBaseZ").value = item.ref.position?.z ?? 0.0;
   }
 
+  updateObjectList();
   if (viewMode === "3d") update3DScene();
+}
+
+// Scene Hierarchy Outliner List
+function updateObjectList() {
+  const container = document.getElementById("sceneObjectList");
+  if (!container) return;
+  container.innerHTML = "";
+
+  let totalCount = 0;
+
+  function addCategory(title, items, type, getLabel, getBadge) {
+    if (!items || items.length === 0) return;
+    const catTitle = document.createElement("div");
+    catTitle.className = "obj-category-title";
+    catTitle.innerText = `${title} (${items.length})`;
+    container.appendChild(catTitle);
+
+    for (const it of items) {
+      totalCount++;
+      const row = document.createElement("div");
+      row.className = "obj-item";
+      const isSelected = selectedItem?.ref === it || (type === "camera" && selectedItem?.key === it._key);
+      if (isSelected) row.classList.add("active");
+
+      const left = document.createElement("div");
+      left.className = "obj-item-left";
+      left.innerText = getLabel(it);
+
+      const badge = document.createElement("span");
+      badge.className = "obj-badge";
+      badge.innerText = getBadge(it);
+
+      row.appendChild(left);
+      row.appendChild(badge);
+
+      row.addEventListener("click", () => {
+        if (type === "camera") {
+          selectItem({ type: "camera", ref: it, key: it._key });
+        } else {
+          selectItem({ type, ref: it });
+        }
+        render();
+        if (viewMode === "3d") update3DScene();
+      });
+
+      container.appendChild(row);
+    }
+  }
+
+  // Cameras
+  const cams = Object.entries(currentVenue.cameras || {}).map(([k, c]) => ({ ...c, _key: k }));
+  addCategory("📷 Cameras", cams, "camera", (c) => c.name || c.id, (c) => `Z: ${c.position.z}m`);
+
+  // Zones
+  addCategory("⬡ Zones", currentVenue.zones || [], "zone", (z) => z.name || z.id, (z) => `+${z.floorHeight}m to ${z.ceilingHeight}m`);
+
+  // Floors / Raised Platforms
+  addCategory("🪜 Floors & Dais", currentVenue.floors || [], "floor", (f) => f.name || f.id, (f) => `Elev: +${f.elevation}m`);
+
+  // Walls & Open Arches
+  addCategory("🧱 Walls & Arches", currentVenue.walls || [], "wall", (w) => w.name || w.id, (w) => {
+    return w.bottomZ > 0 ? `Open: ${w.bottomZ}m–${w.topZ}m` : `Wall: 0–${w.topZ}m`;
+  });
+
+  // Occluders
+  addCategory("🛡 Occluders (Keymasks)", currentVenue.occluders || [], "occluder", (o) => o.name || o.id, (o) => o.kind.toUpperCase());
+
+  const countBadge = document.getElementById("objectCountBadge");
+  if (countBadge) countBadge.innerText = totalCount.toString();
 }
 
 // Form Field Updaters
 document.getElementById("itemId").addEventListener("input", (e) => {
   if (selectedItem) {
     selectedItem.ref.id = e.target.value;
+    updateObjectList();
     if (viewMode === "3d") update3DScene();
   }
 });
@@ -623,6 +1029,7 @@ document.getElementById("itemName").addEventListener("input", (e) => {
   if (selectedItem) {
     selectedItem.ref.name = e.target.value;
     render();
+    updateObjectList();
     if (viewMode === "3d") update3DScene();
   }
 });
@@ -630,17 +1037,72 @@ document.getElementById("zoneFloor").addEventListener("input", (e) => {
   if (selectedItem?.type === "zone") {
     selectedItem.ref.floorHeight = Number(e.target.value);
     render();
+    updateObjectList();
     if (viewMode === "3d") update3DScene();
   }
 });
 document.getElementById("zoneCeiling").addEventListener("input", (e) => {
   if (selectedItem?.type === "zone") {
     selectedItem.ref.ceilingHeight = Number(e.target.value);
+    render();
+    updateObjectList();
     if (viewMode === "3d") update3DScene();
   }
 });
 document.getElementById("zoneColor").addEventListener("input", (e) => {
   if (selectedItem?.type === "zone") {
+    selectedItem.ref.color = e.target.value;
+    render();
+    if (viewMode === "3d") update3DScene();
+  }
+});
+document.getElementById("floorElevation").addEventListener("input", (e) => {
+  if (selectedItem?.type === "floor") {
+    selectedItem.ref.elevation = Number(e.target.value);
+    render();
+    updateObjectList();
+    if (viewMode === "3d") update3DScene();
+  }
+});
+document.getElementById("floorThickness").addEventListener("input", (e) => {
+  if (selectedItem?.type === "floor") {
+    selectedItem.ref.thickness = Number(e.target.value);
+    render();
+    if (viewMode === "3d") update3DScene();
+  }
+});
+document.getElementById("floorColor").addEventListener("input", (e) => {
+  if (selectedItem?.type === "floor") {
+    selectedItem.ref.color = e.target.value;
+    render();
+    if (viewMode === "3d") update3DScene();
+  }
+});
+document.getElementById("wallBottomZ").addEventListener("input", (e) => {
+  if (selectedItem?.type === "wall") {
+    selectedItem.ref.bottomZ = Number(e.target.value);
+    render();
+    updateObjectList();
+    if (viewMode === "3d") update3DScene();
+  }
+});
+document.getElementById("wallTopZ").addEventListener("input", (e) => {
+  if (selectedItem?.type === "wall") {
+    selectedItem.ref.topZ = Number(e.target.value);
+    render();
+    updateObjectList();
+    if (viewMode === "3d") update3DScene();
+  }
+});
+document.getElementById("wallThickness").addEventListener("input", (e) => {
+  if (selectedItem?.type === "wall") {
+    selectedItem.ref.thickness = Number(e.target.value);
+    render();
+    if (viewMode === "3d") update3DScene();
+  }
+});
+document.getElementById("wallColor").addEventListener("input", (e) => {
+  if (selectedItem?.type === "wall") {
     selectedItem.ref.color = e.target.value;
     render();
     if (viewMode === "3d") update3DScene();
@@ -656,12 +1118,60 @@ document.getElementById("camPan").addEventListener("input", (e) => {
 document.getElementById("camTilt").addEventListener("input", (e) => {
   if (selectedItem?.type === "camera") {
     selectedItem.ref.baseOrientation.tilt = Number(e.target.value);
+    render();
     if (viewMode === "3d") update3DScene();
   }
 });
 document.getElementById("camHeight").addEventListener("input", (e) => {
   if (selectedItem?.type === "camera") {
     selectedItem.ref.position.z = Number(e.target.value);
+    render();
+    updateObjectList();
+    if (viewMode === "3d") update3DScene();
+  }
+});
+document.getElementById("occKind").addEventListener("change", (e) => {
+  if (selectedItem?.type === "occluder") {
+    selectedItem.ref.kind = e.target.value;
+    render();
+    updateObjectList();
+    if (viewMode === "3d") update3DScene();
+  }
+});
+document.getElementById("occMeshUrl").addEventListener("input", (e) => {
+  if (selectedItem?.type === "occluder") {
+    selectedItem.ref.meshUrl = e.target.value;
+  }
+});
+document.getElementById("occWidth").addEventListener("input", (e) => {
+  if (selectedItem?.type === "occluder") {
+    selectedItem.ref.dimensions = selectedItem.ref.dimensions || {};
+    selectedItem.ref.dimensions.width = Number(e.target.value);
+    render();
+    if (viewMode === "3d") update3DScene();
+  }
+});
+document.getElementById("occDepth").addEventListener("input", (e) => {
+  if (selectedItem?.type === "occluder") {
+    selectedItem.ref.dimensions = selectedItem.ref.dimensions || {};
+    selectedItem.ref.dimensions.depth = Number(e.target.value);
+    render();
+    if (viewMode === "3d") update3DScene();
+  }
+});
+document.getElementById("occHeight").addEventListener("input", (e) => {
+  if (selectedItem?.type === "occluder") {
+    selectedItem.ref.dimensions = selectedItem.ref.dimensions || {};
+    selectedItem.ref.dimensions.height = Number(e.target.value);
+    render();
+    if (viewMode === "3d") update3DScene();
+  }
+});
+document.getElementById("occBaseZ").addEventListener("input", (e) => {
+  if (selectedItem?.type === "occluder") {
+    selectedItem.ref.position = selectedItem.ref.position || { x: 0, y: 0, z: 0 };
+    selectedItem.ref.position.z = Number(e.target.value);
+    render();
     if (viewMode === "3d") update3DScene();
   }
 });
@@ -670,12 +1180,19 @@ document.getElementById("camHeight").addEventListener("input", (e) => {
 document.getElementById("btnDeleteItem").addEventListener("click", () => {
   if (!selectedItem) return;
   if (selectedItem.type === "zone") {
-    currentVenue.zones = currentVenue.zones.filter((z) => z !== selectedItem.ref);
+    currentVenue.zones = (currentVenue.zones || []).filter((z) => z !== selectedItem.ref);
   } else if (selectedItem.type === "camera") {
     delete currentVenue.cameras[selectedItem.key];
+  } else if (selectedItem.type === "occluder") {
+    currentVenue.occluders = (currentVenue.occluders || []).filter((o) => o !== selectedItem.ref);
+  } else if (selectedItem.type === "floor") {
+    currentVenue.floors = (currentVenue.floors || []).filter((f) => f !== selectedItem.ref);
+  } else if (selectedItem.type === "wall") {
+    currentVenue.walls = (currentVenue.walls || []).filter((w) => w !== selectedItem.ref);
   }
   selectItem(null);
   render();
+  if (viewMode === "3d") update3DScene();
 });
 
 // Export JSON
@@ -829,13 +1346,27 @@ function init3D() {
     threeRaycaster.setFromCamera(threeMouse, threeCamera);
 
     const intersects = threeRaycaster.intersectObjects(threeObjectsGroup.children, true);
+    const itemHits = [];
     for (const hit of intersects) {
       let curr = hit.object;
       while (curr && !curr.userData?.item) curr = curr.parent;
-      if (curr?.userData?.item) {
-        selectItem(curr.userData.item);
-        break;
+      if (curr?.userData?.item && !itemHits.some((h) => h.item.ref === curr.userData.item.ref)) {
+        itemHits.push({ item: curr.userData.item, distance: hit.distance });
       }
+    }
+
+    if (itemHits.length > 0) {
+      // Prioritize smaller objects like cameras, occluders, and walls over giant enclosing zone/floor volumes!
+      const prio = { camera: 1, occluder: 2, wall: 3, zone: 4, floor: 5 };
+      itemHits.sort((a, b) => {
+        const pa = prio[a.item.type] || 99;
+        const pb = prio[b.item.type] || 99;
+        if (pa !== pb) return pa - pb;
+        return a.distance - b.distance;
+      });
+      selectItem(itemHits[0].item);
+      render();
+      update3DScene();
     }
   });
 
@@ -908,7 +1439,89 @@ function update3DScene() {
   axes.position.set(0, 0, 0.02);
   threeObjectsGroup.add(axes);
 
-  // 2. Extruded 3D Zones
+  // 2. Floors & Dais Platforms (Elevated surfaces)
+  if (currentVenue.floors) {
+    for (const floor of currentVenue.floors) {
+      if (!floor.polygon || floor.polygon.length < 3) continue;
+
+      const shape = new THREE.Shape();
+      shape.moveTo(floor.polygon[0].x, floor.polygon[0].y);
+      for (let i = 1; i < floor.polygon.length; i++) {
+        shape.lineTo(floor.polygon[i].x, floor.polygon[i].y);
+      }
+      shape.closePath();
+
+      const elev = floor.elevation ?? 0.4;
+      const thick = floor.thickness ?? 0.4;
+      const extrudeGeo = new THREE.ExtrudeGeometry(shape, { depth: thick, bevelEnabled: false });
+
+      const isSelected = selectedItem?.ref === floor;
+      const floorMat = new THREE.MeshStandardMaterial({
+        color: floor.color ? parseInt(floor.color.replace("#", "0x")) : 0x2c3e50,
+        roughness: 0.8,
+        metalness: 0.1
+      });
+
+      const floorMesh = new THREE.Mesh(extrudeGeo, floorMat);
+      floorMesh.position.set(0, 0, elev - thick);
+      floorMesh.userData = { item: { type: "floor", ref: floor } };
+
+      const wireGeo = new THREE.EdgesGeometry(extrudeGeo);
+      const wireMat = new THREE.LineBasicMaterial({
+        color: isSelected ? 0x38bdf8 : 0x64748b,
+        linewidth: isSelected ? 2 : 1
+      });
+      floorMesh.add(new THREE.LineSegments(wireGeo, wireMat));
+
+      threeObjectsGroup.add(floorMesh);
+    }
+  }
+
+  // 3. Walls & Open Arches (Partitions & Open clearance archways)
+  if (currentVenue.walls) {
+    for (const wall of currentVenue.walls) {
+      const isSelected = selectedItem?.ref === wall;
+      const dx = wall.end.x - wall.start.x;
+      const dy = wall.end.y - wall.start.y;
+      const len = Math.hypot(dx, dy);
+      if (len < 0.05) continue;
+      const angle = Math.atan2(dy, dx);
+
+      const bZ = wall.bottomZ ?? 0.0;
+      const tZ = wall.topZ ?? 14.0;
+      const h = Math.max(0.1, tZ - bZ);
+      const thick = wall.thickness ?? 0.45;
+
+      const boxGeo = new THREE.BoxGeometry(len, thick, h);
+      const isOpen = bZ > 0;
+      const wallMat = new THREE.MeshStandardMaterial({
+        color: isOpen ? 0x64748b : 0x334155,
+        transparent: isOpen,
+        opacity: isOpen ? 0.85 : 0.95,
+        roughness: 0.7
+      });
+
+      const wallMesh = new THREE.Mesh(boxGeo, wallMat);
+      wallMesh.rotation.z = angle;
+      wallMesh.position.set(
+        (wall.start.x + wall.end.x) / 2,
+        (wall.start.y + wall.end.y) / 2,
+        bZ + h / 2
+      );
+      wallMesh.userData = { item: { type: "wall", ref: wall } };
+
+      const wireGeo = new THREE.EdgesGeometry(boxGeo);
+      const wireMat = new THREE.LineBasicMaterial({
+        color: isSelected ? 0x38bdf8 : (isOpen ? 0x94a3b8 : 0x1e293b),
+        linewidth: isSelected ? 2 : 1
+      });
+      wallMesh.add(new THREE.LineSegments(wireGeo, wireMat));
+
+      threeObjectsGroup.add(wallMesh);
+    }
+  }
+
+  // 4. Extruded 3D Zones
   for (const zone of currentVenue.zones) {
     if (!zone.polygon || zone.polygon.length < 3) continue;
 

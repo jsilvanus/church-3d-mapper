@@ -44,3 +44,36 @@ test('catches degenerate polygon (< 3 vertices)', () => {
   assert.equal(res.valid, false);
   assert.ok(res.issues.some((i) => i.path.includes('polygon')));
 });
+
+test('catches invalid wall elevation (bottomZ >= topZ)', () => {
+  const model = createStandardHallTemplate();
+  model.walls = [{
+    id: 'broken_wall',
+    name: 'Broken Wall',
+    start: { x: 0, y: 0 },
+    end: { x: 5, y: 0 },
+    bottomZ: 10,
+    topZ: 5,
+    thickness: 0.3,
+  }];
+
+  const res = validateVenueModel(model);
+  assert.equal(res.valid, false);
+  assert.ok(res.issues.some((i) => i.path.includes('bottomZ')));
+});
+
+test('validates valid open-bottom wall', () => {
+  const model = createStandardHallTemplate();
+  model.walls = [{
+    id: 'arch_header',
+    name: 'Arch Header',
+    start: { x: -3, y: 0 },
+    end: { x: 3, y: 0 },
+    bottomZ: 3.5, // 3.5m open clearance underneath!
+    topZ: 12.0,
+    thickness: 0.4,
+  }];
+
+  const res = validateVenueModel(model);
+  assert.equal(res.valid, true);
+});

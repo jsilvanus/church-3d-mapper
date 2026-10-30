@@ -152,6 +152,65 @@ export function validateVenueModel(model: unknown): ValidationResult {
     }
   }
 
+  // Floors / Raised Platforms (Optional)
+  if (v.floors !== undefined) {
+    if (!Array.isArray(v.floors)) {
+      issues.push({ path: 'floors', message: 'Floors must be an array', severity: 'error' });
+    } else {
+      for (let i = 0; i < v.floors.length; i++) {
+        const f = v.floors[i]!;
+        const prefix = `floors[${i}]`;
+        if (!f.id || typeof f.id !== 'string') {
+          issues.push({ path: `${prefix}.id`, message: 'Floor platform id is required', severity: 'error' });
+        }
+        if (typeof f.elevation !== 'number') {
+          issues.push({ path: `${prefix}.elevation`, message: 'Floor elevation must be a number (meters)', severity: 'error' });
+        }
+        if (!Array.isArray(f.polygon) || f.polygon.length < 3) {
+          issues.push({ path: `${prefix}.polygon`, message: 'Floor platform polygon must have at least 3 vertices', severity: 'error' });
+        } else {
+          const area = Math.abs(polygonSignedArea(f.polygon));
+          if (area < 0.01) {
+            issues.push({ path: `${prefix}.polygon`, message: 'Floor platform polygon area is effectively zero', severity: 'error' });
+          }
+        }
+      }
+    }
+  }
+
+  // Walls / Partitions / Arch Headers (Optional)
+  if (v.walls !== undefined) {
+    if (!Array.isArray(v.walls)) {
+      issues.push({ path: 'walls', message: 'Walls must be an array', severity: 'error' });
+    } else {
+      for (let i = 0; i < v.walls.length; i++) {
+        const w = v.walls[i]!;
+        const prefix = `walls[${i}]`;
+        if (!w.id || typeof w.id !== 'string') {
+          issues.push({ path: `${prefix}.id`, message: 'Wall id is required', severity: 'error' });
+        }
+        if (!w.start || typeof w.start.x !== 'number' || typeof w.start.y !== 'number') {
+          issues.push({ path: `${prefix}.start`, message: 'Wall start requires numeric x and y', severity: 'error' });
+        }
+        if (!w.end || typeof w.end.x !== 'number' || typeof w.end.y !== 'number') {
+          issues.push({ path: `${prefix}.end`, message: 'Wall end requires numeric x and y', severity: 'error' });
+        }
+        if (typeof w.bottomZ !== 'number') {
+          issues.push({ path: `${prefix}.bottomZ`, message: 'Wall bottomZ must be a number (0 for normal, >0 for open-bottom arch)', severity: 'error' });
+        }
+        if (typeof w.topZ !== 'number') {
+          issues.push({ path: `${prefix}.topZ`, message: 'Wall topZ must be a number', severity: 'error' });
+        }
+        if (typeof w.bottomZ === 'number' && typeof w.topZ === 'number' && w.bottomZ >= w.topZ) {
+          issues.push({ path: `${prefix}.bottomZ`, message: 'Wall bottomZ must be strictly less than topZ', severity: 'error' });
+        }
+        if (typeof w.thickness !== 'number' || w.thickness <= 0) {
+          issues.push({ path: `${prefix}.thickness`, message: 'Wall thickness must be a positive number', severity: 'error' });
+        }
+      }
+    }
+  }
+
   const hasErrors = issues.some((i) => i.severity === 'error');
   return {
     valid: !hasErrors,
