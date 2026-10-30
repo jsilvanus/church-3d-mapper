@@ -313,7 +313,33 @@ select:focus, input:focus {
 
 .inspector h2 {
   font-size: 15px;
+  margin-bottom: 0;
+}
+
+.collapsible-header {
+  user-select: none;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
   margin-bottom: 12px;
+  border-radius: 4px;
+  transition: opacity 0.15s ease;
+}
+
+.collapsible-header:hover {
+  opacity: 0.85;
+}
+
+.toggle-icon {
+  font-size: 11px;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.collapsible-body.collapsed {
+  display: none;
 }
 
 .inspector h3 {

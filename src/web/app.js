@@ -1296,6 +1296,18 @@ document.getElementById("btnExport").addEventListener("click", () => {
   URL.revokeObjectURL(url);
 });
 
+// Collapsible Venue Properties Section
+const venuePropsHeader = document.getElementById("venuePropsHeader");
+const venuePropsBody = document.getElementById("venuePropsBody");
+const venuePropsToggleIcon = document.getElementById("venuePropsToggleIcon");
+
+venuePropsHeader?.addEventListener("click", () => {
+  const isCollapsed = venuePropsBody?.classList.toggle("collapsed");
+  if (venuePropsToggleIcon) {
+    venuePropsToggleIcon.innerText = isCollapsed ? "▶" : "▼";
+  }
+});
+
 // Template loading
 document.getElementById("templateSelect")?.addEventListener("change", async (e) => {
   const val = e.target.value;
