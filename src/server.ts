@@ -62,6 +62,43 @@ export function createMapperServer(options: ServerOptions = {}): FastifyInstance
     return reply.code(404).send({ error: 'Template not found' });
   });
 
+  // Fetch live scene snapshot from PiSpace
+  app.get('/api/pispace-scene', async (_req, reply) => {
+    try {
+      const targetUrl = `${pispaceUrl.replace(/\/+$/, '')}/api/v1/scene`;
+      const res = await fetch(targetUrl);
+      if (!res.ok) {
+        return reply.code(res.status).send({ error: `PiSpace returned ${res.status}` });
+      }
+      const data = await res.json();
+      return data;
+    } catch (err: any) {
+      return reply.code(502).send({ error: `Failed to connect to PiSpace: ${err.message}` });
+    }
+  });
+
+  // Triangulate 3D point via PiSpace
+  app.post<{ Body: unknown }>('/api/triangulate', async (req, reply) => {
+    try {
+      const targetUrl = `${pispaceUrl.replace(/\/+$/, '')}/api/v1/triangulate`;
+      const res = await fetch(targetUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(req.body),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        return reply.code(res.status).send({ error: `PiSpace triangulation failed: ${text}` });
+      }
+
+      const data = await res.json();
+      return data;
+    } catch (err: any) {
+      return reply.code(502).send({ error: `Failed to connect to PiSpace: ${err.message}` });
+    }
+  });
+
   // Push directly to PiSpace
   app.post<{ Body: unknown }>('/api/push', async (req, reply) => {
     try {

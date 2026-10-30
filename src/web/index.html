@@ -37,6 +37,7 @@
       <button id="btnLoadFile" class="btn secondary">Open JSON</button>
       <input type="file" id="fileInput" accept=".json" style="display: none;">
       <button id="btnValidate" class="btn secondary">Validate</button>
+      <button id="btnOpenSurvey" class="btn secondary" title="Optical Theodolite & FreeD Triangulation Survey">📐 FreeD Survey</button>
       <button id="btnExport" class="btn primary">Export venue.json</button>
       <button id="btnPushPiSpace" class="btn accent">Push to PiSpace</button>
     </div>
@@ -289,6 +290,120 @@
         <ul id="validationIssuesList"></ul>
       </div>
     </aside>
+  </div>
+
+  <!-- FreeD Optical Triangulation Survey Modal -->
+  <div id="surveyModal" class="modal" style="display: none;">
+    <div class="modal-backdrop" id="surveyBackdrop"></div>
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span class="icon">📐</span>
+          <h2>FreeD Optical Triangulation Survey</h2>
+        </div>
+        <button id="btnCloseSurvey" class="btn-close" title="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">
+          Triangulates 3D points $(X, Y, Z)$ by intersecting sightline rays from two FreeD cameras. Aim both cameras at the same physical point to map floors, walls, and corners.
+        </p>
+
+        <div class="survey-cams-grid">
+          <!-- Camera 1 Box -->
+          <div class="survey-cam-card" id="cam1Card">
+            <div class="cam-card-header">
+              <span class="badge primary">Camera 1</span>
+              <select id="surveyCam1Select" class="cam-select"></select>
+            </div>
+            <div class="cam-pos-label" id="cam1PosLabel">Position: (0, 0, 0)</div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Pan (&deg;)</label>
+                <input type="number" id="surveyCam1Pan" step="0.1" value="0.0">
+              </div>
+              <div class="form-group">
+                <label>Tilt (&deg;)</label>
+                <input type="number" id="surveyCam1Tilt" step="0.1" value="-10.0">
+              </div>
+            </div>
+          </div>
+
+          <!-- Camera 2 Box -->
+          <div class="survey-cam-card" id="cam2Card">
+            <div class="cam-card-header">
+              <span class="badge accent">Camera 2</span>
+              <select id="surveyCam2Select" class="cam-select"></select>
+            </div>
+            <div class="cam-pos-label" id="cam2PosLabel">Position: (0, 0, 0)</div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Pan (&deg;)</label>
+                <input type="number" id="surveyCam2Pan" step="0.1" value="0.0">
+              </div>
+              <div class="form-group">
+                <label>Tilt (&deg;)</label>
+                <input type="number" id="surveyCam2Tilt" step="0.1" value="-10.0">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="survey-actions-bar">
+          <button id="btnFetchFreeD" class="btn secondary" title="Fetch live FreeD telemetry from PiSpace / cameras">
+            ⟳ Fetch Live FreeD
+          </button>
+          <button id="btnCalculatePoint" class="btn primary" title="Calculate 3D point from ray intersection">
+            🎯 Calculate 3D Point
+          </button>
+        </div>
+
+        <!-- Triangulation Result Display -->
+        <div id="surveyResultBox" class="survey-result-box" style="display: none;">
+          <div class="result-header">
+            <h4>Triangulated 3D Point</h4>
+            <span id="surveyQualityBadge" class="status-badge ok">Excellent (&plusmn;0.02m)</span>
+          </div>
+
+          <div class="coords-display">
+            <div class="coord-item">
+              <span class="coord-label">X (Lateral)</span>
+              <span class="coord-val" id="surveyResX">0.00 m</span>
+            </div>
+            <div class="coord-item">
+              <span class="coord-label">Y (Longitudinal)</span>
+              <span class="coord-val" id="surveyResY">0.00 m</span>
+            </div>
+            <div class="coord-item highlight">
+              <span class="coord-label">Z (Elevation)</span>
+              <span class="coord-val" id="surveyResZ">0.00 m</span>
+            </div>
+            <div class="coord-item">
+              <span class="coord-label">Ray Residual</span>
+              <span class="coord-val" id="surveyResErr">0.02 m</span>
+            </div>
+          </div>
+
+          <div class="zone-detection-label" id="surveyDetectedZone" style="display: none;">
+            Located in zone: <strong id="surveyZoneName">Altar Chancel</strong>
+          </div>
+
+          <div class="result-actions">
+            <button id="btnSurveyAddToActive" class="btn accent">
+              ✚ Add to Active Selection
+            </button>
+            <button id="btnSurveyNewFloor" class="btn secondary">
+              ✚ Add as Floor Corner
+            </button>
+            <button id="btnSurveyNewWall" class="btn secondary">
+              ✚ Add as Wall Point
+            </button>
+            <button id="btnSurveyCopyCoords" class="btn secondary">
+              📋 Copy (X, Y, Z)
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script type="module" src="app.js"></script>

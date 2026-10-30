@@ -50,5 +50,23 @@ test('church-3d-mapper server routes', async () => {
   assert.equal(resTpl.statusCode, 200);
   assert.equal(resTpl.json().name, 'New Sanctuary');
 
+  // PiSpace scene proxy route (returns 502 gracefully if PiSpace is offline)
+  const resScene = await app.inject({
+    method: 'GET',
+    url: '/api/pispace-scene',
+  });
+  assert.ok(resScene.statusCode === 200 || resScene.statusCode === 502);
+
+  // Triangulate proxy route (returns 502 gracefully if PiSpace is offline)
+  const resTri = await app.inject({
+    method: 'POST',
+    url: '/api/triangulate',
+    payload: {
+      cam1: { cameraId: 'cam1', pan: 0, tilt: 0 },
+      cam2: { cameraId: 'cam2', pan: 0, tilt: 0 },
+    },
+  });
+  assert.ok(resTri.statusCode === 200 || resTri.statusCode === 502);
+
   await app.close();
 });

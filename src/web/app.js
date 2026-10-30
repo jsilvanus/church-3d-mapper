@@ -253,6 +253,8 @@ let threeScene = null;
 let threeCamera = null;
 let threeControls = null;
 let threeObjectsGroup = null;
+let threeSurveyGroup = null;
+let activeSurveyResult = null;
 let globalGhostWalls = false;
 let isMovingObject = false;
 let moveStartWorld = { x: 0, y: 0 };
@@ -343,6 +345,7 @@ function render() {
   drawCameras();
   drawDraftPolygon();
   drawDraftWall();
+  drawActiveSurveyRays();
   updateObjectList();
 }
 
@@ -690,6 +693,70 @@ function drawDraftPolygon() {
     ctx.arc(sp.x, sp.y, 4, 0, Math.PI * 2);
     ctx.fill();
   }
+  ctx.restore();
+}
+
+function drawActiveSurveyRays() {
+  if (!activeSurveyResult) return;
+  const pt = activeSurveyResult.point;
+  const pScreen = worldToScreen(pt.x, pt.y);
+
+  ctx.save();
+
+  // Sightline from Cam 1
+  if (activeSurveyResult.cam1Pos) {
+    const p1 = worldToScreen(activeSurveyResult.cam1Pos.x, activeSurveyResult.cam1Pos.y);
+    ctx.strokeStyle = "#38bdf8"; // Cyan
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 6]);
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(pScreen.x, pScreen.y);
+    ctx.stroke();
+  }
+
+  // Sightline from Cam 2
+  if (activeSurveyResult.cam2Pos) {
+    const p2 = worldToScreen(activeSurveyResult.cam2Pos.x, activeSurveyResult.cam2Pos.y);
+    ctx.strokeStyle = "#f59e0b"; // Amber
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 6]);
+    ctx.beginPath();
+    ctx.moveTo(p2.x, p2.y);
+    ctx.lineTo(pScreen.x, pScreen.y);
+    ctx.stroke();
+  }
+
+  // Target Crosshair at (X, Y)
+  ctx.setLineDash([]);
+  ctx.strokeStyle = "#10b981"; // Emerald
+  ctx.fillStyle = "rgba(16, 185, 129, 0.25)";
+  ctx.lineWidth = 2;
+
+  // Outer ring
+  ctx.beginPath();
+  ctx.arc(pScreen.x, pScreen.y, 14, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // Inner crosshair ticks
+  ctx.beginPath();
+  ctx.moveTo(pScreen.x - 20, pScreen.y);
+  ctx.lineTo(pScreen.x + 20, pScreen.y);
+  ctx.moveTo(pScreen.x, pScreen.y - 20);
+  ctx.lineTo(pScreen.x, pScreen.y + 20);
+  ctx.stroke();
+
+  // Coordinates label
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 11px monospace";
+  ctx.textAlign = "center";
+  ctx.fillText(`🎯 (${pt.x.toFixed(2)}, ${pt.y.toFixed(2)}, Z:+${pt.z.toFixed(2)}m)`, pScreen.x, pScreen.y - 24);
+
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "9px sans-serif";
+  ctx.fillText(`Convergence error: ±${activeSurveyResult.errorMeters.toFixed(3)}m`, pScreen.x, pScreen.y + 28);
+
   ctx.restore();
 }
 
@@ -1439,6 +1506,9 @@ function init3D() {
   threeObjectsGroup = new THREE.Group();
   threeScene.add(threeObjectsGroup);
 
+  threeSurveyGroup = new THREE.Group();
+  threeScene.add(threeSurveyGroup);
+
   // Raycasting for 3D Click Selection
   viewport3d.addEventListener("click", (e) => {
     const rect = viewport3d.getBoundingClientRect();
@@ -1808,6 +1878,8 @@ function update3DScene() {
       threeObjectsGroup.add(occMesh);
     }
   }
+
+  update3DSurvey();
 }
 
 function switchToView(mode) {
@@ -1875,3 +1947,471 @@ window.addEventListener("resize", () => {
 // Initial boot
 resizeCanvas();
 render();
+
+// ==========================================
+// FreeD Optical Triangulation Survey Wizard
+// ==========================================
+
+function update3DSurvey() {
+  if (!threeSurveyGroup) return;
+
+  // Clear previous survey visuals
+  while (threeSurveyGroup.children.length > 0) {
+    const obj = threeSurveyGroup.children[0];
+    threeSurveyGroup.remove(obj);
+    if (obj.geometry) obj.geometry.dispose();
+  }
+
+  if (!activeSurveyResult) return;
+
+  const pt = activeSurveyResult.point;
+  const targetVec = new THREE.Vector3(pt.x, pt.y, pt.z);
+
+  // Sightline from Cam 1
+  if (activeSurveyResult.cam1Pos) {
+    const c1 = activeSurveyResult.cam1Pos;
+    const p1 = new THREE.Vector3(c1.x, c1.y, c1.z);
+    const lineGeo1 = new THREE.BufferGeometry().setFromPoints([p1, targetVec]);
+    const lineMat1 = new THREE.LineDashedMaterial({
+      color: 0x38bdf8,
+      dashSize: 0.5,
+      gapSize: 0.25,
+      linewidth: 2,
+    });
+    const line1 = new THREE.Line(lineGeo1, lineMat1);
+    line1.computeLineDistances();
+    threeSurveyGroup.add(line1);
+  }
+
+  // Sightline from Cam 2
+  if (activeSurveyResult.cam2Pos) {
+    const c2 = activeSurveyResult.cam2Pos;
+    const p2 = new THREE.Vector3(c2.x, c2.y, c2.z);
+    const lineGeo2 = new THREE.BufferGeometry().setFromPoints([p2, targetVec]);
+    const lineMat2 = new THREE.LineDashedMaterial({
+      color: 0xf59e0b,
+      dashSize: 0.5,
+      gapSize: 0.25,
+      linewidth: 2,
+    });
+    const line2 = new THREE.Line(lineGeo2, lineMat2);
+    line2.computeLineDistances();
+    threeSurveyGroup.add(line2);
+  }
+
+  // Target Crosshair sphere & rings
+  const sphereGeo = new THREE.SphereGeometry(0.18, 16, 16);
+  const sphereMat = new THREE.MeshStandardMaterial({
+    color: 0x10b981,
+    emissive: 0x10b981,
+    emissiveIntensity: 0.6,
+  });
+  const sphereMesh = new THREE.Mesh(sphereGeo, sphereMat);
+  sphereMesh.position.copy(targetVec);
+  threeSurveyGroup.add(sphereMesh);
+
+  // Horizontal target ring
+  const ringGeo = new THREE.RingGeometry(0.3, 0.38, 24);
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0x10b981, side: THREE.DoubleSide });
+  const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+  ringMesh.position.copy(targetVec);
+  threeSurveyGroup.add(ringMesh);
+
+  // Vertical drop line to floor (Z = 0)
+  const dropPoints = [new THREE.Vector3(pt.x, pt.y, 0), targetVec];
+  const dropGeo = new THREE.BufferGeometry().setFromPoints(dropPoints);
+  const dropMat = new THREE.LineBasicMaterial({ color: 0x4ade80 });
+  const dropLine = new THREE.Line(dropGeo, dropMat);
+  threeSurveyGroup.add(dropLine);
+}
+
+function calculateSurveyRay(mountPos, baseOrientation, localPanDeg, localTiltDeg) {
+  const worldPanDeg = ((baseOrientation?.pan || 0) + (localPanDeg || 0)) % 360;
+  const worldTiltDeg = (baseOrientation?.tilt || 0) + (localTiltDeg || 0);
+
+  const panRad = (worldPanDeg * Math.PI) / 180;
+  const tiltRad = (worldTiltDeg * Math.PI) / 180;
+
+  // Camera forward vector in church space:
+  // Forward is +Y (Altar), Right is +X (South), Up is +Z
+  const dx = -Math.sin(panRad) * Math.cos(tiltRad);
+  const dy = Math.cos(panRad) * Math.cos(tiltRad);
+  const dz = Math.sin(tiltRad);
+
+  const len = Math.hypot(dx, dy, dz) || 1;
+  return {
+    origin: { x: mountPos.x, y: mountPos.y, z: mountPos.z },
+    dir: { x: dx / len, y: dy / len, z: dz / len },
+  };
+}
+
+function solveSkewRays(ray1, ray2, eps = 1e-6) {
+  const u = ray1.dir;
+  const v = ray2.dir;
+  const w0 = {
+    x: ray1.origin.x - ray2.origin.x,
+    y: ray1.origin.y - ray2.origin.y,
+    z: ray1.origin.z - ray2.origin.z,
+  };
+
+  const a = u.x * u.x + u.y * u.y + u.z * u.z;
+  const b = u.x * v.x + u.y * v.y + u.z * v.z;
+  const c = v.x * v.x + v.y * v.y + v.z * v.z;
+  const d = u.x * w0.x + u.y * w0.y + u.z * w0.z;
+  const e = v.x * w0.x + v.y * w0.y + v.z * w0.z;
+
+  const denom = a * c - b * b;
+  if (Math.abs(denom) < eps) return null; // parallel
+
+  const t1 = (b * e - c * d) / denom;
+  const t2 = (a * e - b * d) / denom;
+
+  const p1 = {
+    x: ray1.origin.x + t1 * u.x,
+    y: ray1.origin.y + t1 * u.y,
+    z: ray1.origin.z + t1 * u.z,
+  };
+  const p2 = {
+    x: ray2.origin.x + t2 * v.x,
+    y: ray2.origin.y + t2 * v.y,
+    z: ray2.origin.z + t2 * v.z,
+  };
+
+  const midpoint = {
+    x: (p1.x + p2.x) / 2,
+    y: (p1.y + p2.y) / 2,
+    z: (p1.z + p2.z) / 2,
+  };
+
+  const diffX = p1.x - p2.x;
+  const diffY = p1.y - p2.y;
+  const diffZ = p1.z - p2.z;
+  const errorMeters = Math.hypot(diffX, diffY, diffZ);
+
+  return {
+    point: midpoint,
+    errorMeters,
+    t1,
+    t2,
+    p1,
+    p2,
+    isBehind: t1 < 0 || t2 < 0,
+  };
+}
+
+// Modal & Survey Controls
+const surveyModal = document.getElementById("surveyModal");
+const btnOpenSurvey = document.getElementById("btnOpenSurvey");
+const btnCloseSurvey = document.getElementById("btnCloseSurvey");
+const surveyBackdrop = document.getElementById("surveyBackdrop");
+const surveyCam1Select = document.getElementById("surveyCam1Select");
+const surveyCam2Select = document.getElementById("surveyCam2Select");
+const cam1PosLabel = document.getElementById("cam1PosLabel");
+const cam2PosLabel = document.getElementById("cam2PosLabel");
+const surveyCam1Pan = document.getElementById("surveyCam1Pan");
+const surveyCam1Tilt = document.getElementById("surveyCam1Tilt");
+const surveyCam2Pan = document.getElementById("surveyCam2Pan");
+const surveyCam2Tilt = document.getElementById("surveyCam2Tilt");
+const btnFetchFreeD = document.getElementById("btnFetchFreeD");
+const btnCalculatePoint = document.getElementById("btnCalculatePoint");
+const surveyResultBox = document.getElementById("surveyResultBox");
+const surveyQualityBadge = document.getElementById("surveyQualityBadge");
+const surveyResX = document.getElementById("surveyResX");
+const surveyResY = document.getElementById("surveyResY");
+const surveyResZ = document.getElementById("surveyResZ");
+const surveyResErr = document.getElementById("surveyResErr");
+const surveyDetectedZone = document.getElementById("surveyDetectedZone");
+const surveyZoneName = document.getElementById("surveyZoneName");
+const btnSurveyAddToActive = document.getElementById("btnSurveyAddToActive");
+const btnSurveyNewFloor = document.getElementById("btnSurveyNewFloor");
+const btnSurveyNewWall = document.getElementById("btnSurveyNewWall");
+const btnSurveyCopyCoords = document.getElementById("btnSurveyCopyCoords");
+
+function populateSurveyCams() {
+  const cams = Object.entries(currentVenue.cameras || {});
+  surveyCam1Select.innerHTML = "";
+  surveyCam2Select.innerHTML = "";
+
+  for (const [key, cam] of cams) {
+    const opt1 = document.createElement("option");
+    opt1.value = key;
+    opt1.textContent = cam.name || key;
+    surveyCam1Select.appendChild(opt1);
+
+    const opt2 = document.createElement("option");
+    opt2.value = key;
+    opt2.textContent = cam.name || key;
+    surveyCam2Select.appendChild(opt2);
+  }
+
+  if (cams.length > 1) {
+    surveyCam2Select.selectedIndex = 1;
+  }
+
+  updateSurveyCamLabels();
+}
+
+function updateSurveyCamLabels() {
+  const c1 = currentVenue.cameras?.[surveyCam1Select.value];
+  if (c1) {
+    cam1PosLabel.textContent = `Pos: (${c1.position.x}, ${c1.position.y}, ${c1.position.z}m) | Base Pan: ${c1.baseOrientation.pan}°`;
+  }
+  const c2 = currentVenue.cameras?.[surveyCam2Select.value];
+  if (c2) {
+    cam2PosLabel.textContent = `Pos: (${c2.position.x}, ${c2.position.y}, ${c2.position.z}m) | Base Pan: ${c2.baseOrientation.pan}°`;
+  }
+}
+
+surveyCam1Select?.addEventListener("change", updateSurveyCamLabels);
+surveyCam2Select?.addEventListener("change", updateSurveyCamLabels);
+
+btnOpenSurvey?.addEventListener("click", () => {
+  populateSurveyCams();
+  surveyModal.style.display = "flex";
+});
+
+btnCloseSurvey?.addEventListener("click", () => {
+  surveyModal.style.display = "none";
+});
+
+surveyBackdrop?.addEventListener("click", () => {
+  surveyModal.style.display = "none";
+});
+
+btnFetchFreeD?.addEventListener("click", async () => {
+  try {
+    const res = await fetch("/api/pispace-scene");
+    if (!res.ok) {
+      throw new Error(`PiSpace returned ${res.status}`);
+    }
+    const data = await res.json();
+    const c1Key = surveyCam1Select.value;
+    const c2Key = surveyCam2Select.value;
+
+    const t1 = data.cameras?.[c1Key]?.telemetry;
+    const t2 = data.cameras?.[c2Key]?.telemetry;
+
+    if (t1) {
+      surveyCam1Pan.value = Number(t1.pan).toFixed(1);
+      surveyCam1Tilt.value = Number(t1.tilt).toFixed(1);
+    }
+    if (t2) {
+      surveyCam2Pan.value = Number(t2.pan).toFixed(1);
+      surveyCam2Tilt.value = Number(t2.tilt).toFixed(1);
+    }
+
+    alert(`Fetched live FreeD:\n${c1Key}: Pan ${surveyCam1Pan.value}°, Tilt ${surveyCam1Tilt.value}°\n${c2Key}: Pan ${surveyCam2Pan.value}°, Tilt ${surveyCam2Tilt.value}°`);
+  } catch (err) {
+    alert(`Could not fetch live FreeD (is PiSpace running on port 3108?): ${err.message}`);
+  }
+});
+
+btnCalculatePoint?.addEventListener("click", async () => {
+  const c1Key = surveyCam1Select.value;
+  const c2Key = surveyCam2Select.value;
+  const c1 = currentVenue.cameras?.[c1Key];
+  const c2 = currentVenue.cameras?.[c2Key];
+
+  if (!c1 || !c2) {
+    alert("Please select two valid cameras.");
+    return;
+  }
+  if (c1Key === c2Key) {
+    alert("Triangulation requires two different camera vantage points.");
+    return;
+  }
+
+  const pan1 = Number(surveyCam1Pan.value) || 0;
+  const tilt1 = Number(surveyCam1Tilt.value) || 0;
+  const pan2 = Number(surveyCam2Pan.value) || 0;
+  const tilt2 = Number(surveyCam2Tilt.value) || 0;
+
+  let solution = null;
+
+  // Try server triangulation first
+  try {
+    const res = await fetch("/api/triangulate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cam1: { cameraId: c1Key, pan: pan1, tilt: tilt1 },
+        cam2: { cameraId: c2Key, pan: pan2, tilt: tilt2 },
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.ok) {
+        solution = {
+          point: data.point,
+          errorMeters: data.errorMeters,
+          cam1Pos: c1.position,
+          cam2Pos: c2.position,
+          zone: data.zone,
+        };
+      }
+    }
+  } catch (err) {
+    // Fallback to local computation
+  }
+
+  // Local client solver fallback
+  if (!solution) {
+    const ray1 = calculateSurveyRay(c1.position, c1.baseOrientation, pan1, tilt1);
+    const ray2 = calculateSurveyRay(c2.position, c2.baseOrientation, pan2, tilt2);
+    const localSol = solveSkewRays(ray1, ray2);
+
+    if (!localSol) {
+      alert("Rays are parallel or do not converge.");
+      return;
+    }
+
+    // Check if point is inside a zone
+    let foundZone = null;
+    for (const z of currentVenue.zones || []) {
+      if (pointInPoly(localSol.point, z.polygon)) {
+        foundZone = z;
+        break;
+      }
+    }
+
+    solution = {
+      point: localSol.point,
+      errorMeters: localSol.errorMeters,
+      cam1Pos: c1.position,
+      cam2Pos: c2.position,
+      zone: foundZone ? { id: foundZone.id, name: foundZone.name } : null,
+    };
+  }
+
+  activeSurveyResult = solution;
+
+  // Display results
+  surveyResX.textContent = `${solution.point.x.toFixed(2)} m`;
+  surveyResY.textContent = `${solution.point.y.toFixed(2)} m`;
+  surveyResZ.textContent = `+${solution.point.z.toFixed(2)} m`;
+  surveyResErr.textContent = `±${solution.errorMeters.toFixed(3)} m`;
+
+  if (solution.errorMeters < 0.15) {
+    surveyQualityBadge.className = "status-badge ok";
+    surveyQualityBadge.textContent = `Excellent (±${solution.errorMeters.toFixed(2)}m)`;
+  } else if (solution.errorMeters < 0.35) {
+    surveyQualityBadge.className = "status-badge warning";
+    surveyQualityBadge.textContent = `Fair (±${solution.errorMeters.toFixed(2)}m)`;
+  } else {
+    surveyQualityBadge.className = "status-badge error";
+    surveyQualityBadge.textContent = `Poor Convergence (±${solution.errorMeters.toFixed(2)}m)`;
+  }
+
+  if (solution.zone) {
+    surveyZoneName.textContent = solution.zone.name;
+    surveyDetectedZone.style.display = "block";
+  } else {
+    surveyDetectedZone.style.display = "none";
+  }
+
+  surveyResultBox.style.display = "flex";
+
+  render();
+  if (viewMode === "3d") update3DScene();
+});
+
+// Map insertion actions from Triangulation Result
+btnSurveyAddToActive?.addEventListener("click", () => {
+  if (!activeSurveyResult) return;
+  const pt = {
+    x: Math.round(activeSurveyResult.point.x * 100) / 100,
+    y: Math.round(activeSurveyResult.point.y * 100) / 100,
+  };
+  const z = Math.round(activeSurveyResult.point.z * 100) / 100;
+
+  if (selectedItem?.type === "floor") {
+    selectedItem.ref.polygon.push(pt);
+    selectedItem.ref.elevation = z;
+    alert(`Added vertex (${pt.x}, ${pt.y}) to floor "${selectedItem.ref.name}" at elevation +${z}m.`);
+  } else if (selectedItem?.type === "zone") {
+    selectedItem.ref.polygon.push(pt);
+    alert(`Added vertex (${pt.x}, ${pt.y}) to zone "${selectedItem.ref.name}".`);
+  } else if (selectedItem?.type === "wall") {
+    if (!selectedItem.ref.start) {
+      selectedItem.ref.start = pt;
+      selectedItem.ref.bottomZ = z;
+    } else {
+      selectedItem.ref.end = pt;
+    }
+    alert(`Updated wall "${selectedItem.ref.name}" endpoint.`);
+  } else {
+    alert("Select a Floor, Wall, or Zone in the inspector to add this vertex to it.");
+    return;
+  }
+
+  render();
+  if (viewMode === "3d") update3DScene();
+});
+
+btnSurveyNewFloor?.addEventListener("click", () => {
+  if (!activeSurveyResult) return;
+  const pt = {
+    x: Math.round(activeSurveyResult.point.x * 100) / 100,
+    y: Math.round(activeSurveyResult.point.y * 100) / 100,
+  };
+  const z = Math.round(activeSurveyResult.point.z * 100) / 100;
+
+  const floorId = `floor_${Date.now()}`;
+  const newFloor = {
+    id: floorId,
+    name: `Survey Platform (+${z}m)`,
+    elevation: z,
+    thickness: 0.4,
+    color: "#475569",
+    polygon: [
+      pt,
+      { x: pt.x + 2.0, y: pt.y },
+      { x: pt.x + 2.0, y: pt.y + 2.0 },
+      { x: pt.x, y: pt.y + 2.0 },
+    ],
+  };
+
+  currentVenue.floors = currentVenue.floors || [];
+  currentVenue.floors.push(newFloor);
+  selectItem({ type: "floor", ref: newFloor });
+  render();
+  if (viewMode === "3d") update3DScene();
+  alert(`Created new floor platform "${newFloor.name}" at Z = +${z}m. Adjust the remaining vertices as needed.`);
+});
+
+btnSurveyNewWall?.addEventListener("click", () => {
+  if (!activeSurveyResult) return;
+  const pt = {
+    x: Math.round(activeSurveyResult.point.x * 100) / 100,
+    y: Math.round(activeSurveyResult.point.y * 100) / 100,
+  };
+  const z = Math.round(activeSurveyResult.point.z * 100) / 100;
+
+  const wallId = `wall_${Date.now()}`;
+  const newWall = {
+    id: wallId,
+    name: `Survey Wall (${z}m)`,
+    start: pt,
+    end: { x: pt.x + 3.0, y: pt.y },
+    bottomZ: z,
+    topZ: z + 3.5,
+    thickness: 0.4,
+    color: "#526071",
+  };
+
+  currentVenue.walls = currentVenue.walls || [];
+  currentVenue.walls.push(newWall);
+  selectItem({ type: "wall", ref: newWall });
+  render();
+  if (viewMode === "3d") update3DScene();
+  alert(`Created new wall "${newWall.name}" starting at (${pt.x}, ${pt.y}) with bottom height ${z}m.`);
+});
+
+btnSurveyCopyCoords?.addEventListener("click", () => {
+  if (!activeSurveyResult) return;
+  const { x, y, z } = activeSurveyResult.point;
+  const text = `X: ${x.toFixed(3)}, Y: ${y.toFixed(3)}, Z: ${z.toFixed(3)} (error: ±${activeSurveyResult.errorMeters.toFixed(3)}m)`;
+  navigator.clipboard?.writeText(text);
+  alert(`Copied coordinates to clipboard:\n${text}`);
+});
