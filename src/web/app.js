@@ -238,6 +238,14 @@ let currentVenue = JSON.parse(JSON.stringify(KESKUSKIRKKO_TEMPLATE));
 
 // State
 let currentTool = "select";
+let levelFilter = ""; // levels id shown in full; "" = all
+let placingTypeId = null; // object type being placed with the place-object tool
+const MAP_TYPES = {
+  furniture: { key: "furniture", type: "furniture", title: "🪑 Furniture", badge: (f) => f.kind || "other" },
+  stair: { key: "stairs", type: "stair", title: "🪜 Stairs & Ramps", badge: (s) => `${s.fromZ}→${s.toZ}m` },
+  exit: { key: "exits", type: "exit", title: "🚪 Exits", badge: (e) => e.level || `Z ${e.position?.z ?? 0}m` },
+  room: { key: "rooms", type: "room", title: "🏠 Rooms", badge: (r) => r.kind || "room" },
+};
 let selectedItem = null; // { type: 'zone'|'camera'|'occluder'|'floor'|'wall', ref: object, key?: string }
 let currentDraftPolygon = [];
 let currentWallStart = null;
@@ -339,8 +347,10 @@ function render() {
   drawGrid();
   drawSanctuaryEnvelope();
   drawFloors();
+  drawMapAreas();
   drawWalls();
   drawZones();
+  drawMapItems();
   drawOccluders();
   drawCameras();
   drawDraftPolygon();
@@ -793,6 +803,9 @@ function findItemAt(sx, sy, w) {
       }
     }
   }
+  // 2b. Furniture & exits
+  const mapItem = findMapItemAt(sx, sy, w);
+  if (mapItem) return mapItem;
   // 3. Walls
   for (const wall of currentVenue.walls || []) {
     const p1 = worldToScreen(wall.start.x, wall.start.y);
@@ -803,6 +816,9 @@ function findItemAt(sx, sy, w) {
   for (const z of currentVenue.zones || []) {
     if (pointInPoly(w, z.polygon)) return { type: "zone", ref: z };
   }
+  // 4b. Stairs & rooms
+  const mapArea = findMapAreaAt(w);
+  if (mapArea) return mapArea;
   // 5. Floors
   for (const f of currentVenue.floors || []) {
     if (pointInPoly(w, f.polygon)) return { type: "floor", ref: f };
@@ -841,6 +857,8 @@ canvas.addEventListener("mousemove", (e) => {
         pt.x += dx;
         pt.y += dy;
       }
+    } else if (moveMapElement(selectedItem, dx, dy)) {
+      // handled
     } else if (selectedItem.type === "wall") {
       selectedItem.ref.start.x += dx;
       selectedItem.ref.start.y += dy;
@@ -946,6 +964,19 @@ canvas.addEventListener("mousedown", (e) => {
     selectItem({ type: "camera", ref: currentVenue.cameras[camId], key: camId });
     render();
     if (viewMode === "3d") update3DScene();
+  } else if (currentTool === "place-object") {
+    const item = placeObjectAt(w);
+    if (item) {
+      selectItem(item);
+      render();
+      if (viewMode === "3d") update3DScene();
+    }
+  } else if (currentTool === "add-furniture" || currentTool === "add-exit") {
+    const item = addMapElementAt(currentTool, w);
+    setTool("select");
+    selectItem(item);
+    render();
+    if (viewMode === "3d") update3DScene();
   } else if (currentTool === "add-occluder") {
     currentVenue.occluders = currentVenue.occluders || [];
     const occId = `occ_${Date.now().toString().slice(-4)}`;
@@ -1031,6 +1062,7 @@ document.querySelectorAll(".tool-btn").forEach((btn) => {
 
 function setTool(tool) {
   currentTool = tool;
+  if (tool !== "place-object") placingTypeId = null;
   if (tool !== "add-wall") currentWallStart = null;
   if (tool !== "add-zone" && tool !== "add-floor") currentDraftPolygon = [];
   document.querySelectorAll(".tool-btn").forEach((b) => b.classList.toggle("active", b.getAttribute("data-tool") === tool));
@@ -1060,6 +1092,7 @@ function selectItem(item) {
   document.getElementById("floorFields").style.display = item.type === "floor" ? "block" : "none";
   document.getElementById("wallFields").style.display = item.type === "wall" ? "block" : "none";
   document.getElementById("occluderFields").style.display = item.type === "occluder" ? "block" : "none";
+  showMapElementFields(item);
 
   document.getElementById("itemId").value = item.ref.id || "";
   document.getElementById("itemName").value = item.ref.name || "";
@@ -1161,6 +1194,11 @@ function updateObjectList() {
 
   // Occluders
   addCategory("🛡 Occluders (Keymasks)", currentVenue.occluders || [], "occluder", (o) => o.name || o.id, (o) => o.kind.toUpperCase());
+
+  // Map elements (furniture, stairs, exits, rooms)
+  for (const def of Object.values(MAP_TYPES)) {
+    addCategory(def.title, currentVenue[def.key] || [], def.type, (i) => i.name || i.id, def.badge);
+  }
 
   const countBadge = document.getElementById("objectCountBadge");
   if (countBadge) countBadge.innerText = totalCount.toString();
@@ -1345,6 +1383,20 @@ document.getElementById("btnDeleteItem").addEventListener("click", () => {
     currentVenue.floors = (currentVenue.floors || []).filter((f) => f !== selectedItem.ref);
   } else if (selectedItem.type === "wall") {
     currentVenue.walls = (currentVenue.walls || []).filter((w) => w !== selectedItem.ref);
+  } else if (selectedItem.type === "placement") {
+    const layout = activeLayout();
+    if (layout) layout.placements = layout.placements.filter((p) => p !== selectedItem.ref);
+  } else if (selectedItem.type === "objectType") {
+    const id = selectedItem.ref.id;
+    const used = (currentVenue.layouts || []).some((l) => l.placements.some((p) => p.typeId === id));
+    if (used) {
+      alert("This object type is placed in a layout. Remove its placements first.");
+      return;
+    }
+    currentVenue.objectTypes = (currentVenue.objectTypes || []).filter((t) => t !== selectedItem.ref);
+  } else if (MAP_TYPES[selectedItem.type]) {
+    const key = MAP_TYPES[selectedItem.type].key;
+    currentVenue[key] = (currentVenue[key] || []).filter((i) => i !== selectedItem.ref);
   }
   selectItem(null);
   render();
@@ -1447,18 +1499,19 @@ document.getElementById("btnValidate")?.addEventListener("click", async () => {
 // Push to PiSpace
 document.getElementById("btnPushPiSpace").addEventListener("click", async () => {
   try {
-    const res = await fetch("http://127.0.0.1:3108/api/v1/venue", {
-      method: "PUT",
+    const res = await fetch("/api/push", {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(currentVenue)
     });
     if (res.ok) {
       alert("Successfully pushed venue model to PiSpace!");
     } else {
-      alert(`PiSpace rejected venue model: HTTP ${res.status}`);
+      const body = await res.json().catch(() => ({}));
+      alert(`PiSpace rejected venue model: HTTP ${res.status} ${body.error || ""}`);
     }
   } catch (err) {
-    alert(`Failed to reach PiSpace on port 3108: ${err.message}`);
+    alert(`Failed to reach the mapper server: ${err.message}`);
   }
 });
 
@@ -1879,6 +1932,7 @@ function update3DScene() {
     }
   }
 
+  addMapElements3D();
   update3DSurvey();
 }
 
@@ -2202,7 +2256,7 @@ btnFetchFreeD?.addEventListener("click", async () => {
 
     alert(`Fetched live FreeD:\n${c1Key}: Pan ${surveyCam1Pan.value}°, Tilt ${surveyCam1Tilt.value}°\n${c2Key}: Pan ${surveyCam2Pan.value}°, Tilt ${surveyCam2Tilt.value}°`);
   } catch (err) {
-    alert(`Could not fetch live FreeD (is PiSpace running on port 3108?): ${err.message}`);
+    alert(`Could not fetch live FreeD (is PiSpace running on port 3203?): ${err.message}`);
   }
 });
 
@@ -2414,4 +2468,532 @@ btnSurveyCopyCoords?.addEventListener("click", () => {
   const text = `X: ${x.toFixed(3)}, Y: ${y.toFixed(3)}, Z: ${z.toFixed(3)} (error: ±${activeSurveyResult.errorMeters.toFixed(3)}m)`;
   navigator.clipboard?.writeText(text);
   alert(`Copied coordinates to clipboard:\n${text}`);
+});
+
+// ==========================================
+// Map elements: furniture, stairs, exits, rooms (pispace venue map)
+// ==========================================
+
+
+function levelElevation() {
+  const lvl = (currentVenue.levels || []).find((l) => l.id === levelFilter);
+  return lvl ? lvl.elevation : null;
+}
+
+/** Same rule as pispace's SVG map: base within -0.5..+2 m of the chosen level. */
+function isOnLevel(z) {
+  const e = levelElevation();
+  return e === null || (z >= e - 0.5 && z < e + 2.0);
+}
+
+function syncLevelFilter() {
+  const sel = document.getElementById("levelFilter");
+  if (!sel) return;
+  const levels = currentVenue.levels || [];
+  const wanted = ["", ...levels.map((l) => l.id)].join("|");
+  if (sel.dataset.levels !== wanted) {
+    sel.innerHTML = "";
+    sel.appendChild(new Option("All levels", ""));
+    for (const l of levels) sel.appendChild(new Option(`${l.name} (+${l.elevation}m)`, l.id));
+    sel.dataset.levels = wanted;
+    if (!levels.some((l) => l.id === levelFilter)) levelFilter = "";
+    sel.value = levelFilter;
+  }
+  sel.style.display = levels.length ? "" : "none";
+}
+
+document.getElementById("levelFilter")?.addEventListener("change", (e) => {
+  levelFilter = e.target.value;
+  render();
+  if (viewMode === "3d") update3DScene();
+});
+
+function furnitureCorners(f) {
+  const a = ((f.rotationDeg || 0) * Math.PI) / 180;
+  const w = (f.size?.width ?? 1) / 2;
+  const d = (f.size?.depth ?? 1) / 2;
+  return [[-w, -d], [w, -d], [w, d], [-w, d]].map(([lx, ly]) => ({
+    x: f.center.x + lx * Math.cos(a) - ly * Math.sin(a),
+    y: f.center.y + lx * Math.sin(a) + ly * Math.cos(a),
+  }));
+}
+
+function tracePoly(poly) {
+  ctx.beginPath();
+  poly.forEach((pt, i) => {
+    const p = worldToScreen(pt.x, pt.y);
+    if (i === 0) ctx.moveTo(p.x, p.y);
+    else ctx.lineTo(p.x, p.y);
+  });
+  ctx.closePath();
+}
+
+function drawMapAreas() {
+  syncLevelFilter();
+  syncLayoutSelect();
+  updateLibrary();
+  for (const room of currentVenue.rooms || []) {
+    if (!room.polygon || room.polygon.length < 3) continue;
+    ctx.save();
+    ctx.globalAlpha = isOnLevel(room.floorZ ?? 0) ? 1 : 0.2;
+    const sel = selectedItem?.ref === room;
+    tracePoly(room.polygon);
+    ctx.fillStyle = "rgba(148, 163, 184, 0.18)";
+    ctx.strokeStyle = sel ? "#ffffff" : "#94a3b8";
+    ctx.lineWidth = sel ? 2.5 : 1;
+    ctx.fill();
+    ctx.stroke();
+    const c = worldToScreen(
+      room.polygon.reduce((s, p) => s + p.x, 0) / room.polygon.length,
+      room.polygon.reduce((s, p) => s + p.y, 0) / room.polygon.length,
+    );
+    ctx.fillStyle = "#cbd5e1";
+    ctx.font = "9px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(room.name, c.x, c.y);
+    ctx.restore();
+  }
+  for (const st of currentVenue.stairs || []) {
+    if (!st.polygon || st.polygon.length < 3) continue;
+    ctx.save();
+    const on = isOnLevel(Math.min(st.fromZ, st.toZ)) || isOnLevel(Math.max(st.fromZ, st.toZ));
+    ctx.globalAlpha = on ? 1 : 0.2;
+    const sel = selectedItem?.ref === st;
+    tracePoly(st.polygon);
+    ctx.fillStyle = "rgba(14, 116, 144, 0.25)";
+    ctx.strokeStyle = sel ? "#ffffff" : "#22d3ee";
+    ctx.lineWidth = sel ? 2.5 : 1;
+    ctx.fill();
+    ctx.stroke();
+    // tread hatching
+    ctx.clip();
+    ctx.strokeStyle = "rgba(34, 211, 238, 0.5)";
+    ctx.lineWidth = 1;
+    const xs = st.polygon.map((p) => worldToScreen(p.x, p.y));
+    const minX = Math.min(...xs.map((p) => p.x)), maxX = Math.max(...xs.map((p) => p.x));
+    const minY = Math.min(...xs.map((p) => p.y)), maxY = Math.max(...xs.map((p) => p.y));
+    for (let x = minX; x < maxX; x += Math.max(4, 0.3 * scale)) {
+      ctx.beginPath();
+      ctx.moveTo(x, minY);
+      ctx.lineTo(x, maxY);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+function drawMapItems() {
+  for (const f of allFurnitureViews()) {
+    if (!f.center || !f.size) continue;
+    ctx.save();
+    ctx.globalAlpha = isOnLevel(f.center.z ?? 0) ? 1 : 0.2;
+    const sel = selectedItem?.ref === (f._placement || f);
+    ctx.fillStyle = hexToRgba(f.color || (f._placement ? "#f59e0b" : "#94a3b8"), sel ? 0.8 : 0.55);
+    ctx.strokeStyle = sel ? "#ffffff" : f._placement ? "#fbbf24" : "rgba(226, 232, 240, 0.6)";
+    if (f._placement) ctx.setLineDash([4, 2]);
+    ctx.lineWidth = sel ? 2.5 : 1;
+    if (f.shape === "cylinder") {
+      const p = worldToScreen(f.center.x, f.center.y);
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, (f.size.width / 2) * scale, (f.size.depth / 2) * scale, 0, 0, Math.PI * 2);
+    } else {
+      tracePoly(furnitureCorners(f));
+    }
+    ctx.fill();
+    ctx.stroke();
+    if (sel || (scale >= 40 && f.kind !== "pew")) {
+      const p = worldToScreen(f.center.x, f.center.y);
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "9px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(f.name, p.x, p.y - 4);
+    }
+    ctx.restore();
+  }
+  for (const ex of currentVenue.exits || []) {
+    if (!ex.position) continue;
+    const lvl = levelElevation();
+    const on = lvl === null || (ex.level ? ex.level === levelFilter : isOnLevel(ex.position.z ?? 0));
+    const p = worldToScreen(ex.position.x, ex.position.y);
+    ctx.save();
+    ctx.globalAlpha = on ? 1 : 0.2;
+    ctx.fillStyle = "#16a34a";
+    ctx.strokeStyle = selectedItem?.ref === ex ? "#ffffff" : "#bbf7d0";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 9px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("EXIT", p.x, p.y + 3);
+    ctx.restore();
+  }
+}
+
+function pointInFurniture(w, f) {
+  if (f.shape === "cylinder") {
+    const rx = f.size.width / 2, ry = f.size.depth / 2;
+    return ((w.x - f.center.x) / rx) ** 2 + ((w.y - f.center.y) / ry) ** 2 <= 1;
+  }
+  return pointInPoly(w, furnitureCorners(f));
+}
+
+function findMapItemAt(sx, sy, w) {
+  for (const ex of currentVenue.exits || []) {
+    if (!ex.position) continue;
+    const p = worldToScreen(ex.position.x, ex.position.y);
+    if (Math.hypot(p.x - sx, p.y - sy) < 10) return { type: "exit", ref: ex };
+  }
+  // Prefer items on the shown level, then the highest (gallery pews over nave pews)
+  const hits = allFurnitureViews().filter((f) => f.center && f.size && pointInFurniture(w, f));
+  // Movable objects first, then the shown level, then the highest
+  hits.sort((a, b) => Number(!!b._placement) - Number(!!a._placement)
+    || Number(isOnLevel(b.center.z ?? 0)) - Number(isOnLevel(a.center.z ?? 0))
+    || (b.center.z ?? 0) - (a.center.z ?? 0));
+  if (!hits.length) return null;
+  return hits[0]._placement ? { type: "placement", ref: hits[0]._placement } : { type: "furniture", ref: hits[0] };
+}
+
+function findMapAreaAt(w) {
+  for (const st of currentVenue.stairs || []) {
+    if (st.polygon && pointInPoly(w, st.polygon)) return { type: "stair", ref: st };
+  }
+  for (const r of currentVenue.rooms || []) {
+    if (r.polygon && pointInPoly(w, r.polygon)) return { type: "room", ref: r };
+  }
+  return null;
+}
+
+function moveMapElement(item, dx, dy) {
+  if (item.type === "furniture" || item.type === "placement") {
+    item.ref.center.x += dx;
+    item.ref.center.y += dy;
+  } else if (item.type === "exit") {
+    item.ref.position.x += dx;
+    item.ref.position.y += dy;
+  } else if (item.type === "stair" || item.type === "room") {
+    for (const pt of item.ref.polygon) {
+      pt.x += dx;
+      pt.y += dy;
+    }
+  } else {
+    return false;
+  }
+  return true;
+}
+
+function addMapElementAt(tool, w) {
+  const x = Math.round(w.x * 10) / 10;
+  const y = Math.round(w.y * 10) / 10;
+  const z = levelElevation() ?? 0;
+  const suffix = Date.now().toString().slice(-4);
+  if (tool === "add-exit") {
+    currentVenue.exits = currentVenue.exits || [];
+    const ex = { id: `exit_${suffix}`, name: "Exit", position: { x, y, z } };
+    if (levelFilter) ex.level = levelFilter;
+    currentVenue.exits.push(ex);
+    return { type: "exit", ref: ex };
+  }
+  currentVenue.furniture = currentVenue.furniture || [];
+  const f = {
+    id: `pew_${suffix}`, name: "Pew", kind: "pew", shape: "box",
+    center: { x, y, z }, size: { width: 4.0, depth: 0.5, height: 0.9 },
+  };
+  currentVenue.furniture.push(f);
+  return { type: "furniture", ref: f };
+}
+
+/** Map elements are edited as JSON in the property panel (id and name use the common fields). */
+function showMapElementFields(item) {
+  const box = document.getElementById("mapElementFields");
+  if (!box) return;
+  const isMap = !!MAP_TYPES[item.type] || item.type === "placement" || item.type === "objectType";
+  box.style.display = isMap ? "block" : "none";
+  if (!isMap) return;
+  const { id, name, ...rest } = item.ref;
+  const ta = document.getElementById("mapElementJson");
+  ta.value = JSON.stringify(rest, null, 2);
+  ta.classList.remove("invalid");
+}
+
+document.getElementById("mapElementJson")?.addEventListener("input", (e) => {
+  if (!selectedItem || !(MAP_TYPES[selectedItem.type] || selectedItem.type === "placement" || selectedItem.type === "objectType")) return;
+  try {
+    const parsed = JSON.parse(e.target.value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not an object");
+    for (const k of Object.keys(selectedItem.ref)) {
+      if (k !== "id" && k !== "name") delete selectedItem.ref[k];
+    }
+    Object.assign(selectedItem.ref, parsed);
+    e.target.classList.remove("invalid");
+    render();
+    if (viewMode === "3d") update3DScene();
+  } catch {
+    e.target.classList.add("invalid");
+  }
+});
+
+function addMapElements3D() {
+  const hex = (c, fallback) => (c ? parseInt(c.replace("#", "0x")) : fallback);
+  for (const f of allFurnitureViews()) {
+    if (!f.center || !f.size) continue;
+    const on = isOnLevel(f.center.z ?? 0);
+    const sel = selectedItem?.ref === (f._placement || f);
+    const mat = new THREE.MeshStandardMaterial({
+      color: sel ? 0x38bdf8 : hex(f.color, f._placement ? 0xd97706 : 0x8b6f4e),
+      roughness: 0.8,
+      transparent: !on,
+      opacity: on ? 1 : 0.15,
+    });
+    let geo;
+    if (f.shape === "cylinder") {
+      geo = new THREE.CylinderGeometry(f.size.width / 2, f.size.width / 2, f.size.height, 20);
+      geo.rotateX(Math.PI / 2);
+    } else {
+      geo = new THREE.BoxGeometry(f.size.width, f.size.depth, f.size.height);
+    }
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(f.center.x, f.center.y, (f.center.z ?? 0) + f.size.height / 2);
+    mesh.rotation.z = ((f.rotationDeg || 0) * Math.PI) / 180;
+    mesh.userData = { item: f._placement ? { type: "placement", ref: f._placement } : { type: "furniture", ref: f } };
+    threeObjectsGroup.add(mesh);
+  }
+  for (const st of currentVenue.stairs || []) {
+    if (!st.polygon || st.polygon.length < 3) continue;
+    const shape = new THREE.Shape();
+    shape.moveTo(st.polygon[0].x, st.polygon[0].y);
+    for (let i = 1; i < st.polygon.length; i++) shape.lineTo(st.polygon[i].x, st.polygon[i].y);
+    shape.closePath();
+    const low = Math.min(st.fromZ, st.toZ);
+    const high = Math.max(st.fromZ, st.toZ);
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: Math.max(high - low, 0.05), bevelEnabled: false });
+    const mat = new THREE.MeshStandardMaterial({
+      color: selectedItem?.ref === st ? 0x38bdf8 : 0x0e7490, transparent: true, opacity: 0.35,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(0, 0, low);
+    mesh.userData = { item: { type: "stair", ref: st } };
+    threeObjectsGroup.add(mesh);
+  }
+  for (const ex of currentVenue.exits || []) {
+    if (!ex.position) continue;
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.9, 0.9, 0.2),
+      new THREE.MeshStandardMaterial({ color: selectedItem?.ref === ex ? 0x38bdf8 : 0x16a34a, emissive: 0x0b3d1a }),
+    );
+    mesh.position.set(ex.position.x, ex.position.y, (ex.position.z ?? 0) + 2.2);
+    mesh.userData = { item: { type: "exit", ref: ex } };
+    threeObjectsGroup.add(mesh);
+  }
+}
+
+// ==========================================
+// Movable objects: object types (library) placed in named layouts
+// ==========================================
+
+function activeLayout() {
+  const layouts = currentVenue.layouts || [];
+  return layouts.find((l) => l.id === currentVenue.activeLayout) || layouts[0] || null;
+}
+
+/** Fixed furniture plus the active layout's placements expanded from their object types. */
+function allFurnitureViews() {
+  const out = [...(currentVenue.furniture || [])];
+  const layout = activeLayout();
+  if (!layout) return out;
+  const types = new Map((currentVenue.objectTypes || []).map((t) => [t.id, t]));
+  for (const p of layout.placements || []) {
+    const t = types.get(p.typeId);
+    if (!t || !p.center) continue;
+    out.push({
+      id: p.id, name: p.name || t.name, kind: t.kind, shape: t.shape, color: t.color,
+      size: t.size, center: p.center, rotationDeg: p.rotationDeg, _placement: p,
+    });
+  }
+  return out;
+}
+
+function ensureLayout() {
+  currentVenue.layouts = currentVenue.layouts || [];
+  let layout = activeLayout();
+  if (!layout) {
+    layout = { id: "normal", name: "Normal", placements: [] };
+    currentVenue.layouts.push(layout);
+    currentVenue.activeLayout = layout.id;
+  }
+  return layout;
+}
+
+function placeObjectAt(w) {
+  const t = (currentVenue.objectTypes || []).find((x) => x.id === placingTypeId);
+  if (!t) return null;
+  const layout = ensureLayout();
+  const n = layout.placements.filter((p) => p.typeId === t.id).length + 1;
+  let id = `${t.id}_${n}`;
+  while (layout.placements.some((p) => p.id === id)) id = `${t.id}_${Date.now().toString().slice(-5)}`;
+  const p = {
+    id, typeId: t.id, name: `${t.name} ${n}`,
+    center: { x: Math.round(w.x * 10) / 10, y: Math.round(w.y * 10) / 10, z: levelElevation() ?? 0 },
+  };
+  layout.placements.push(p);
+  return { type: "placement", ref: p }; // stay in place mode: click again to place another
+}
+
+/** Makes a reusable object type from the selected furniture or movable object. */
+function objectTypeFromSelection() {
+  const it = selectedItem;
+  if (!it || (it.type !== "furniture" && it.type !== "placement")) return null;
+  const src = it.type === "furniture" ? it.ref : allFurnitureViews().find((f) => f._placement === it.ref);
+  const name = prompt("Name for the movable object type:", src.name.replace(/\s*\d+$/, ""));
+  if (!name) return null;
+  currentVenue.objectTypes = currentVenue.objectTypes || [];
+  let id = name.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "object";
+  while (currentVenue.objectTypes.some((t) => t.id === id)) id += "_2";
+  const t = { id, name, kind: src.kind || "other", shape: src.shape || "box", size: { ...src.size } };
+  if (src.color) t.color = src.color;
+  currentVenue.objectTypes.push(t);
+  // A fixed item made movable moves into the active layout as a placement of the new type
+  if (it.type === "furniture" && confirm("Move this item into the current layout as a movable object?")) {
+    const layout = ensureLayout();
+    currentVenue.furniture = currentVenue.furniture.filter((f) => f !== src);
+    const p = { id: src.id, typeId: id, name: src.name, center: { ...src.center } };
+    if (src.rotationDeg) p.rotationDeg = src.rotationDeg;
+    layout.placements.push(p);
+    selectItem({ type: "placement", ref: p });
+  }
+  return t;
+}
+
+function syncLayoutSelect() {
+  const sel = document.getElementById("layoutSelect");
+  if (!sel) return;
+  const layouts = currentVenue.layouts || [];
+  const active = activeLayout();
+  const wanted = layouts.map((l) => `${l.id}:${l.name}`).join("|") + `#${active?.id || ""}`;
+  if (sel.dataset.state === wanted) return;
+  sel.innerHTML = "";
+  if (!layouts.length) sel.appendChild(new Option("No layouts", ""));
+  for (const l of layouts) sel.appendChild(new Option(`Layout: ${l.name}`, l.id));
+  sel.appendChild(new Option("＋ New layout (copy of this)…", "__new"));
+  if (active) sel.appendChild(new Option("✎ Rename this layout…", "__rename"));
+  sel.value = active?.id || "";
+  sel.dataset.state = wanted;
+}
+
+document.getElementById("layoutSelect")?.addEventListener("change", (e) => {
+  const v = e.target.value;
+  const current = activeLayout();
+  if (v === "__new") {
+    const name = prompt("Name of the new layout (e.g. Christmas, Concert):");
+    if (name) {
+      currentVenue.layouts = currentVenue.layouts || [];
+      let id = name.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "layout";
+      while (currentVenue.layouts.some((l) => l.id === id)) id += "_2";
+      const placements = current ? JSON.parse(JSON.stringify(current.placements)) : [];
+      currentVenue.layouts.push({ id, name, placements });
+      currentVenue.activeLayout = id;
+    }
+  } else if (v === "__rename" && current) {
+    const name = prompt("Layout name:", current.name);
+    if (name) current.name = name;
+  } else if (v) {
+    currentVenue.activeLayout = v;
+  }
+  e.target.dataset.state = "";
+  selectItem(null);
+  render();
+  if (viewMode === "3d") update3DScene();
+});
+
+function updateLibrary() {
+  const box = document.getElementById("objectLibraryList");
+  if (!box) return;
+  const types = currentVenue.objectTypes || [];
+  const layout = activeLayout();
+  const state = JSON.stringify([types.map((t) => [t.id, t.name]), placingTypeId, layout?.id, layout?.placements.length, selectedItem?.ref?.id]);
+  if (box.dataset.state === state) return;
+  box.dataset.state = state;
+  box.innerHTML = "";
+  if (!types.length) {
+    const hint = document.createElement("div");
+    hint.className = "empty-hint";
+    hint.innerText = "No movable objects yet. Select a pew or other furniture and press “Make movable”.";
+    box.appendChild(hint);
+  }
+  for (const t of types) {
+    const row = document.createElement("div");
+    row.className = "obj-item" + (placingTypeId === t.id ? " active" : "");
+    const label = document.createElement("div");
+    label.className = "obj-item-left";
+    const count = layout ? layout.placements.filter((p) => p.typeId === t.id).length : 0;
+    label.innerText = `${t.name} (${count})`;
+    label.title = "Edit this object type";
+    label.addEventListener("click", () => {
+      placingTypeId = null;
+      setTool("select");
+      selectItem({ type: "objectType", ref: t });
+      render();
+    });
+    const place = document.createElement("button");
+    place.className = "btn secondary";
+    place.innerText = placingTypeId === t.id ? "Placing…" : "Place";
+    place.title = "Click on the plan to place; Esc or Select tool to stop";
+    place.addEventListener("click", () => {
+      placingTypeId = placingTypeId === t.id ? null : t.id;
+      setTool(placingTypeId ? "place-object" : "select");
+      box.dataset.state = "";
+      updateLibrary();
+    });
+    row.appendChild(label);
+    row.appendChild(place);
+    box.appendChild(row);
+  }
+}
+
+document.getElementById("btnMakeMovable")?.addEventListener("click", () => {
+  if (!objectTypeFromSelection()) {
+    if (!selectedItem || (selectedItem.type !== "furniture" && selectedItem.type !== "placement")) {
+      alert("Select a pew, chair or other furniture first.");
+    }
+    return;
+  }
+  render();
+  if (viewMode === "3d") update3DScene();
+});
+
+// Live: make PiSpace use the layout shown here (preflight / during the service)
+document.getElementById("btnLiveLayout")?.addEventListener("click", async () => {
+  const layout = activeLayout();
+  if (!layout) return alert("This venue has no layouts.");
+  try {
+    const res = await fetch("/api/pispace-layout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ layoutId: layout.id }),
+    });
+    const body = await res.json().catch(() => ({}));
+    alert(res.ok ? `PiSpace now uses layout “${layout.name}”.` : `PiSpace refused: HTTP ${res.status} ${body.error || ""}`);
+  } catch (err) {
+    alert(`Failed to reach the mapper server: ${err.message}`);
+  }
+});
+
+// R / Shift+R rotates the selected furniture or movable object by 15°
+window.addEventListener("keydown", (e) => {
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
+  if (e.key === "Escape" && placingTypeId) {
+    placingTypeId = null;
+    setTool("select");
+    updateLibrary();
+    return;
+  }
+  if ((e.key === "r" || e.key === "R") && selectedItem && (selectedItem.type === "furniture" || selectedItem.type === "placement")) {
+    const step = e.shiftKey ? -15 : 15;
+    selectedItem.ref.rotationDeg = (((selectedItem.ref.rotationDeg || 0) + step) % 360 + 360) % 360;
+    showMapElementFields(selectedItem);
+    render();
+    if (viewMode === "3d") update3DScene();
+  }
 });

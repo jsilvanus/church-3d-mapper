@@ -34,12 +34,15 @@
         <option value="keskuskirkko">Riihimäen Keskuskirkko</option>
         <option value="standard-hall">Standard Rectangular Hall</option>
       </select>
+ <select id="layoutSelect" title="Arrangement of movable objects (normal, Christmas, ...)"></select>
+      <select id="levelFilter" title="Show one storey; the rest is faded" style="display: none;"></select>
       <button id="btnLoadFile" class="btn secondary">Open JSON</button>
       <input type="file" id="fileInput" accept=".json" style="display: none;">
       <button id="btnValidate" class="btn secondary">Validate</button>
       <button id="btnOpenSurvey" class="btn secondary" title="Optical Theodolite & FreeD Triangulation Survey">📐 FreeD Survey</button>
       <button id="btnExport" class="btn primary">Export venue.json</button>
       <button id="btnPushPiSpace" class="btn accent">Push to PiSpace</button>
+      <button id="btnLiveLayout" class="btn secondary" title="Switch PiSpace to the layout shown here, without pushing the whole model">Use layout live</button>
     </div>
   </header>
 
@@ -73,6 +76,14 @@
       <button class="tool-btn" data-tool="add-occluder" title="Place 3D Occluder (Keymask Holdout Mesh)">
         <span class="icon">🛡</span>
         <span>Occluder</span>
+      </button>
+      <button class="tool-btn" data-tool="add-furniture" title="Place Pew / Furniture (edit kind and size in the panel)">
+        <span class="icon">🪑</span>
+        <span>Pew</span>
+      </button>
+      <button class="tool-btn" data-tool="add-exit" title="Place Exit / Door">
+        <span class="icon">🚪</span>
+        <span>Exit</span>
       </button>
       <hr>
       <div class="zoom-controls">
@@ -231,6 +242,12 @@
               </div>
             </div>
           </div>
+          <div id="mapElementFields" style="display: none;">
+            <div class="form-group">
+              <label>Properties (JSON)</label>
+              <textarea id="mapElementJson" rows="12" spellcheck="false"></textarea>
+            </div>
+          </div>
           <div id="occluderFields" style="display: none;">
             <div class="form-group">
               <label>Kind</label>
@@ -266,6 +283,17 @@
           </div>
           <button id="btnDeleteItem" class="btn danger">Delete Item</button>
         </div>
+      </div>
+
+      <hr>
+
+      <!-- Movable object library -->
+      <div id="librarySection">
+        <div class="hierarchy-header">
+          <h3>Movable Objects</h3>
+          <button id="btnMakeMovable" class="btn secondary" title="Turn the selected furniture into a reusable movable object type">Make movable</button>
+        </div>
+        <div id="objectLibraryList" class="scene-object-list"></div>
       </div>
 
       <hr>
