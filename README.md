@@ -16,7 +16,9 @@ Visual 3D venue authoring and validation tool for **PiSpace** in the Pi producti
 - **Strict PiSpace Validation**:
   - Checks for degenerate polygons, self-intersections, floor/ceiling inversions, missing coordinates, and ID collisions.
 - **Direct PiSpace Synchronization**:
-  - Export self-contained `venue.json` files or push directly to a running `pispace` daemon (`PUT /api/v1/venue`).
+  - Export self-contained `venue.json` files or push directly to a running `pispace` daemon (`PUT /api/v1/venue`). PiSpace answers 403 unless it runs with `PISPACE_EDIT_KEY`; start the mapper with the same `PISPACE_EDIT_KEY` (and `PISPACE_URL`, default `http://127.0.0.1:3203`) and it sends the key as a Bearer token. A pushed model lives in PiSpace's memory only: save it to the venue file too.
+- **Map elements**: furniture (pews, altar, pulpit, organ...), stairs and ramps, exits and side rooms are drawn in 2D and 3D, selectable, movable (Move tool, `R` / `Shift+R` rotates 15°) and edited as JSON in the inspector. The **Pew** and **Exit** tools place new ones. The level picker shows one storey (e.g. ground floor or gallery) and fades the rest.
+- **Movable objects and layouts**: things that move between or during services (altar rail sections, lectern, chairs, a Christmas tree) are object types in the **Movable Objects** library. Select a piece of furniture and press **Make movable** to create a type, then **Place** to click copies onto the plan. Placements belong to the layout chosen in the header (**＋ New layout** copies the current one, e.g. "Christmas" from "Normal"). **Use layout live** switches PiSpace to the shown layout without pushing the whole model (preflight or during a service); PiSpace also takes single moves at `PATCH /api/v1/venue/placements/:id`.
 - **Templates Included**:
   - Preloaded with *Riihimäen Keskuskirkko* and standard rectangular church hall templates.
 
@@ -43,7 +45,7 @@ npx church-3d-mapper validate path/to/venue.json
 npx church-3d-mapper init "Hämeenlinnan Kirkko" --out hml-church.json
 
 # Push venue model directly to PiSpace
-npx church-3d-mapper push venue.json --pispace-url http://127.0.0.1:3108
+PISPACE_EDIT_KEY=... npx church-3d-mapper push venue.json --pispace-url http://127.0.0.1:3203
 ```
 
 ---

@@ -84,6 +84,12 @@ export interface VenueModel {
   occluders?: SpatialOccluder[] | undefined;
   floors?: FloorPlatform[] | undefined;
   walls?: VenueWall[] | undefined;
+  /** Optional map elements (pispace venue schema) */
+  levels?: Array<{ id: string; name: string; elevation: number }> | undefined;
+  furniture?: Array<Record<string, unknown>> | undefined;
+  stairs?: Array<Record<string, unknown>> | undefined;
+  exits?: Array<Record<string, unknown>> | undefined;
+  rooms?: Array<Record<string, unknown>> | undefined;
 }
 
 export interface ValidationIssue {
