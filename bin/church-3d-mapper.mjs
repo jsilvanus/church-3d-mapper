@@ -101,9 +101,10 @@ async function main() {
 
     case 'push': {
       const filePath = positional[1];
-      const pispaceUrl = flags['pispace-url'] ?? process.env.PISPACE_URL ?? 'http://127.0.0.1:3108';
+      const pispaceUrl = flags['pispace-url'] ?? process.env.PISPACE_URL ?? 'http://127.0.0.1:3203';
+      const editKey = flags['edit-key'] ?? process.env.PISPACE_EDIT_KEY ?? '';
       if (!filePath) {
-        console.error('Usage: church-3d-mapper push <path-to-venue.json> [--pispace-url http://127.0.0.1:3108]');
+        console.error('Usage: church-3d-mapper push <path-to-venue.json> [--pispace-url http://127.0.0.1:3203] [--edit-key KEY | PISPACE_EDIT_KEY]');
         process.exit(1);
       }
       try {
@@ -112,7 +113,7 @@ async function main() {
         const targetUrl = `${pispaceUrl.replace(/\/+$/, '')}/api/v1/venue`;
         const res = await fetch(targetUrl, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...(editKey ? { Authorization: `Bearer ${editKey}` } : {}) },
           body: JSON.stringify(json)
         });
         if (res.ok) {

@@ -211,9 +211,78 @@ export function validateVenueModel(model: unknown): ValidationResult {
     }
   }
 
+  validateMapElements(model as Record<string, unknown>, issues);
+
   const hasErrors = issues.some((i) => i.severity === 'error');
   return {
     valid: !hasErrors,
     issues,
   };
+}
+
+const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
+
+function isPolygon(poly: unknown): boolean {
+  return Array.isArray(poly) && poly.length >= 3 && poly.every((p) => p && isNum(p.x) && isNum(p.y));
+}
+
+function isPoint3(p: unknown): boolean {
+  const q = p as Record<string, unknown> | undefined;
+  return !!q && isNum(q.x) && isNum(q.y) && isNum(q.z);
+}
+
+/** Optional map elements, same rules as pispace's validateVenueModel. */
+function validateMapElements(v: Record<string, unknown>, issues: ValidationIssue[]): void {
+  const checks: Record<string, (item: Record<string, unknown>) => string | null> = {
+    levels: (i) => (isNum(i.elevation) ? null : 'elevation must be a number'),
+    furniture: (i) => {
+      if (!isPoint3(i.center)) return 'center needs numeric x, y, z';
+      const s = i.size as Record<string, unknown> | undefined;
+      if (!s || !isNum(s.width) || !isNum(s.depth) || !isNum(s.height)) return 'size needs width, depth, height';
+      return null;
+    },
+    stairs: (i) => (!isNum(i.fromZ) || !isNum(i.toZ) ? 'fromZ and toZ must be numbers' : isPolygon(i.polygon) ? null : 'polygon needs at least 3 vertices'),
+    exits: (i) => (isPoint3(i.position) ? null : 'position needs numeric x, y, z'),
+    rooms: (i) => (!isNum(i.floorZ) ? 'floorZ must be a number' : isPolygon(i.polygon) ? null : 'polygon needs at least 3 vertices'),
+  };
+  checks.objectTypes = (i) => {
+    const s = i.size as Record<string, unknown> | undefined;
+    return s && isNum(s.width) && isNum(s.depth) && isNum(s.height) ? null : 'size needs width, depth, height';
+  };
+  const typeIds = new Set(Array.isArray(v.objectTypes) ? (v.objectTypes as Array<{ id?: unknown }>).map((t) => t?.id) : []);
+  checks.layouts = (i) => {
+    if (!Array.isArray(i.placements)) return 'placements must be an array';
+    const seen = new Set<unknown>();
+    for (const p of i.placements as Array<Record<string, unknown>>) {
+      if (!p || typeof p.id !== 'string') return 'every placement needs an id';
+      if (seen.has(p.id)) return `duplicate placement id "${p.id}"`;
+      seen.add(p.id);
+      if (!typeIds.has(p.typeId)) return `placement ${p.id} uses unknown object type "${String(p.typeId)}"`;
+      if (!isPoint3(p.center)) return `placement ${p.id} needs center x, y, z`;
+    }
+    return null;
+  };
+  if (v.activeLayout !== undefined && !(Array.isArray(v.layouts) && v.layouts.some((l: { id?: unknown }) => l?.id === v.activeLayout))) {
+    issues.push({ path: 'activeLayout', message: 'activeLayout must be one of the layout ids', severity: 'error' });
+  }
+  for (const [key, check] of Object.entries(checks)) {
+    const arr = v[key];
+    if (arr === undefined) continue;
+    if (!Array.isArray(arr)) {
+      issues.push({ path: key, message: `${key} must be an array`, severity: 'error' });
+      continue;
+    }
+    const seen = new Set<string>();
+    arr.forEach((item: Record<string, unknown>, i) => {
+      const prefix = `${key}[${i}]`;
+      if (!item || typeof item.id !== 'string' || !item.id) {
+        issues.push({ path: `${prefix}.id`, message: 'id is required', severity: 'error' });
+        return;
+      }
+      if (seen.has(item.id)) issues.push({ path: `${prefix}.id`, message: `Duplicate id "${item.id}"`, severity: 'error' });
+      seen.add(item.id);
+      const problem = check(item);
+      if (problem) issues.push({ path: prefix, message: problem, severity: 'error' });
+    });
+  }
 }

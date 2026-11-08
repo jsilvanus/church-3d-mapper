@@ -9,11 +9,14 @@ export interface ServerOptions {
   port?: number | undefined;
   host?: string | undefined;
   pispaceUrl?: string | undefined;
+  /** pispace PISPACE_EDIT_KEY, sent as a Bearer token on push */
+  editKey?: string | undefined;
 }
 
 export function createMapperServer(options: ServerOptions = {}): FastifyInstance {
   const app = fastify({ logger: false });
-  const pispaceUrl = options.pispaceUrl ?? process.env.PISPACE_URL ?? 'http://127.0.0.1:3108';
+  const pispaceUrl = options.pispaceUrl ?? process.env.PISPACE_URL ?? 'http://127.0.0.1:3203';
+  const editKey = options.editKey ?? process.env.PISPACE_EDIT_KEY?.trim() ?? '';
 
   const webDir = path.resolve('src/web');
   const threeDir = path.resolve('node_modules/three');
@@ -105,7 +108,10 @@ export function createMapperServer(options: ServerOptions = {}): FastifyInstance
       const targetUrl = `${pispaceUrl.replace(/\/+$/, '')}/api/v1/venue`;
       const res = await fetch(targetUrl, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(editKey ? { Authorization: `Bearer ${editKey}` } : {}),
+        },
         body: JSON.stringify(req.body),
       });
 
@@ -115,6 +121,24 @@ export function createMapperServer(options: ServerOptions = {}): FastifyInstance
       }
 
       return { ok: true, message: 'Successfully pushed venue model to PiSpace' };
+    } catch (err: any) {
+      return reply.code(502).send({ error: `Failed to connect to PiSpace: ${err.message}` });
+    }
+  });
+
+  // Switch the layout PiSpace uses (preflight or live during a service)
+  app.post<{ Body: { layoutId?: unknown } }>('/api/pispace-layout', async (req, reply) => {
+    const layoutId = req.body?.layoutId;
+    if (typeof layoutId !== 'string' || !layoutId) return reply.code(400).send({ error: 'layoutId is required' });
+    try {
+      const res = await fetch(`${pispaceUrl.replace(/\/+$/, '')}/api/v1/venue/layout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(editKey ? { Authorization: `Bearer ${editKey}` } : {}) },
+        body: JSON.stringify({ layoutId }),
+      });
+      const text = await res.text();
+      if (!res.ok) return reply.code(res.status).send({ error: `PiSpace rejected: ${text}` });
+      return { ok: true, active: layoutId };
     } catch (err: any) {
       return reply.code(502).send({ error: `Failed to connect to PiSpace: ${err.message}` });
     }
