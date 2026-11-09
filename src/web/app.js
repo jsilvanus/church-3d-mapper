@@ -1,6 +1,7 @@
 // Church 3D Venue Mapper Canvas & WebGL 3D Application
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const KESKUSKIRKKO_TEMPLATE = {
   name: "Riihimäen Keskuskirkko",
@@ -1519,6 +1520,10 @@ document.getElementById("btnPushPiSpace").addEventListener("click", async () => 
 // 3D WebGL Perspective Orbit Implementation
 // ==========================================
 
+let averCamModelTemplate = null;
+const gltfLoader = new GLTFLoader();
+const meshModelCache = new Map();
+
 function init3D() {
   if (threeRenderer) return;
 
@@ -1527,6 +1532,14 @@ function init3D() {
 
   threeScene = new THREE.Scene();
   threeScene.background = new THREE.Color(0x121418);
+
+  // Pre-load AVer PTZ330 CAD camera model
+  if (!averCamModelTemplate) {
+    gltfLoader.load("/models/aver-ptz330.glb", (gltf) => {
+      averCamModelTemplate = gltf.scene;
+      if (viewMode === "3d") update3DScene();
+    });
+  }
 
   threeCamera = new THREE.PerspectiveCamera(45, width / height, 0.1, 500);
   threeCamera.up.set(0, 0, 1); // +Z is UP in Church Space
@@ -1810,19 +1823,40 @@ function update3DScene() {
 
     const isSelected = selectedItem?.ref === cam;
 
-    // Camera body dome
-    const domeMat = new THREE.MeshStandardMaterial({
-      color: isSelected ? 0x3b82f6 : 0xecf0f1,
-      metalness: 0.5,
-      roughness: 0.3
-    });
-    const domeGeo = new THREE.SphereGeometry(0.22, 16, 16);
-    const domeMesh = new THREE.Mesh(domeGeo, domeMat);
-    camGroup.add(domeMesh);
-
-    // Look Vector & Wireframe Frustum
+    // Camera body: AVer PTZ330 CAD Model if available, else stylized dome
     const panRad = (cam.baseOrientation.pan * Math.PI) / 180;
     const tiltRad = (cam.baseOrientation.tilt * Math.PI) / 180;
+
+    if (averCamModelTemplate) {
+      const camInstance = averCamModelTemplate.clone(true);
+      // Pan rotation: in FreeD, pan rotates clockwise viewed from top (yaw around Z)
+      camInstance.rotation.z = -panRad;
+      const head = camInstance.getObjectByName("camera_head");
+      if (head) {
+        head.rotation.x = tiltRad;
+      }
+      if (isSelected) {
+        camInstance.traverse((child) => {
+          if (child.isMesh && child.material) {
+            child.material = child.material.clone();
+            child.material.color.set(0x38bdf8);
+            if (child.material.emissive) child.material.emissive.set(0x1e3a8a);
+          }
+        });
+      }
+      camGroup.add(camInstance);
+    } else {
+      const domeMat = new THREE.MeshStandardMaterial({
+        color: isSelected ? 0x3b82f6 : 0xecf0f1,
+        metalness: 0.5,
+        roughness: 0.3
+      });
+      const domeGeo = new THREE.SphereGeometry(0.22, 16, 16);
+      const domeMesh = new THREE.Mesh(domeGeo, domeMat);
+      camGroup.add(domeMesh);
+    }
+
+    // Look Vector & Wireframe Frustum
     const dx = Math.sin(panRad) * Math.cos(tiltRad);
     const dy = Math.cos(panRad) * Math.cos(tiltRad);
     const dz = Math.sin(tiltRad);
@@ -1918,6 +1952,50 @@ function update3DScene() {
         cylGeo.rotateX(Math.PI / 2);
         occMesh = new THREE.Mesh(cylGeo, occMat);
         occMesh.position.set(occ.position.x, occ.position.y, occ.position.z + h / 2);
+      } else if (occ.kind === "mesh" && occ.meshUrl) {
+        const normUrl = occ.meshUrl.startsWith("/") ? occ.meshUrl : `/${occ.meshUrl}`;
+        const cached = meshModelCache.get(normUrl);
+        if (cached) {
+          const occMeshInstance = cached.clone(true);
+          occMeshInstance.position.set(occ.position.x, occ.position.y, occ.position.z);
+          if (occ.rotation) {
+            occMeshInstance.rotation.set(
+              (occ.rotation.x || 0) * Math.PI / 180,
+              (occ.rotation.y || 0) * Math.PI / 180,
+              (occ.rotation.z || 0) * Math.PI / 180
+            );
+          }
+          if (occ.scale) {
+            occMeshInstance.scale.set(occ.scale.x ?? 1, occ.scale.y ?? 1, occ.scale.z ?? 1);
+          }
+          if (isSelected) {
+            occMeshInstance.traverse((child) => {
+              if (child.isMesh && child.material) {
+                child.material = child.material.clone();
+                child.material.color.set(0xef4444);
+              }
+            });
+          }
+          occMeshInstance.userData = { item: { type: "occluder", ref: occ } };
+          threeObjectsGroup.add(occMeshInstance);
+          continue;
+        } else {
+          // Trigger async fetch and re-render
+          if (!meshModelCache.has(normUrl)) {
+            meshModelCache.set(normUrl, null); // mark in-flight
+            gltfLoader.load(normUrl, (gltf) => {
+              meshModelCache.set(normUrl, gltf.scene);
+              if (viewMode === "3d") update3DScene();
+            });
+          }
+          // Temporary placeholder box while loading
+          const w = occ.dimensions?.width ?? 2.0;
+          const d = occ.dimensions?.depth ?? 1.2;
+          const h = occ.dimensions?.height ?? 1.0;
+          const boxGeo = new THREE.BoxGeometry(w, d, h);
+          occMesh = new THREE.Mesh(boxGeo, occMat);
+          occMesh.position.set(occ.position.x, occ.position.y, occ.position.z + h / 2);
+        }
       } else {
         const w = occ.dimensions?.width ?? 2.0;
         const d = occ.dimensions?.depth ?? 1.2;
@@ -1947,6 +2025,9 @@ function switchToView(mode) {
     init3D();
     onResize3D();
     update3DScene();
+    if (!scanMeshModel && !scanMeshLoading) {
+      loadChurchScanModel();
+    }
   } else {
     btnView2D.classList.add("active");
     btnView3D.classList.remove("active");
@@ -1986,6 +2067,69 @@ document.getElementById("btn3dGhostWalls")?.addEventListener("click", () => {
   if (btn) btn.classList.toggle("active", globalGhostWalls);
   update3DScene();
 });
+
+let scanMeshModel = null;
+let scanMeshVisible = false;
+let scanMeshLoading = false;
+
+function loadChurchScanModel() {
+  const btn = document.getElementById("btn3dScanOverlay");
+  if (!threeScene) return;
+
+  if (scanMeshModel) {
+    scanMeshVisible = !scanMeshVisible;
+    scanMeshModel.visible = scanMeshVisible;
+    if (btn) btn.classList.toggle("active", scanMeshVisible);
+    return;
+  }
+
+  if (scanMeshLoading) return;
+  scanMeshLoading = true;
+  if (btn) btn.innerText = "⏳ Loading Church Model...";
+
+  const loader = new GLTFLoader();
+  loader.load(
+    "/models/church.glb",
+    (gltf) => {
+      scanMeshLoading = false;
+      scanMeshVisible = true;
+      scanMeshModel = gltf.scene;
+
+      // Canonical Church 3D Model: Already transformed natively to PiSpace Metric Venue Coordinates!
+      scanMeshModel.position.set(0.0, 0.0, 0.0);
+      scanMeshModel.rotation.set(0.0, 0.0, 0.0);
+
+      scanMeshModel.traverse((child) => {
+        if (child.isMesh && child.material) {
+          child.material.roughness = 0.8;
+          child.material.metalness = 0.1;
+        }
+      });
+
+      threeScene.add(scanMeshModel);
+      if (btn) {
+        btn.innerText = "🏛 3D Church Model";
+        btn.classList.add("active");
+      }
+    },
+    (xhr) => {
+      if (btn && xhr.total) {
+        const pct = Math.round((xhr.loaded / xhr.total) * 100);
+        btn.innerText = `⏳ Loading (${pct}%)`;
+      }
+    },
+    (err) => {
+      scanMeshLoading = false;
+      console.error("Failed to load church 3D model:", err);
+      if (btn) {
+        btn.innerText = "⚠️ Failed to Load";
+        setTimeout(() => { btn.innerText = "🏛 3D Church Model"; }, 3000);
+      }
+    }
+  );
+}
+
+document.getElementById("btn3dScanOverlay")?.addEventListener("click", loadChurchScanModel);
 
 document.getElementById("btn3dReset")?.addEventListener("click", () => {
   if (!threeCamera || !threeControls) return;

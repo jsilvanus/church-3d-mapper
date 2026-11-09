@@ -20,12 +20,22 @@ export function createMapperServer(options: ServerOptions = {}): FastifyInstance
 
   const webDir = path.resolve('src/web');
   const threeDir = path.resolve('node_modules/three');
+  const modelsDir = path.resolve('models');
 
   // Serve Three.js vendor files offline
   if (fs.existsSync(threeDir)) {
     app.register(fastifyStatic, {
       root: threeDir,
       prefix: '/vendor/three/',
+      decorateReply: false
+    });
+  }
+
+  // Serve 3D mesh model assets (e.g. photogrammetry scan, occluders)
+  if (fs.existsSync(modelsDir)) {
+    app.register(fastifyStatic, {
+      root: modelsDir,
+      prefix: '/models/',
       decorateReply: false
     });
   }
