@@ -50,6 +50,15 @@ PISPACE_EDIT_KEY=... npx church-3d-mapper push venue.json --pispace-url http://1
 
 ---
 
+## Site files outside this repo
+
+Real venue data and scans stay in the site's own private checkout, not here. In the editor:
+
+- **Open local** asks for the path of the venue JSON on this computer (for example `../<site>/apps/pispace/<venue>.json`). The path is kept only in this browser's localStorage. Meshes the venue names (`modelUrl`, `meshUrl`, e.g. `models/church.glb`) then load from the same folder.
+- **Save local** writes the edited venue back to that file after validating it.
+
+The server serves these files only to requests from the same machine and only `.json`, `.glb` and `.gltf` inside the venue's folder. `models/` in this repo holds generic models only (`aver-ptz330.glb`).
+
 ## Venue Model Output Format
 
 Produces `venue.json` conforming to `pispace/venues/venue-schema.json`:
