@@ -11,12 +11,23 @@ export interface ServerOptions {
   pispaceUrl?: string | undefined;
   /** pispace PISPACE_EDIT_KEY, sent as a Bearer token on push */
   editKey?: string | undefined;
+  /** Path to default venue file, e.g. from PISPACE_VENUE_FILE or VENUE_FILE */
+  venueFile?: string | undefined;
 }
 
 export function createMapperServer(options: ServerOptions = {}): FastifyInstance {
+  if (typeof process.loadEnvFile === 'function') {
+    try {
+      process.loadEnvFile();
+    } catch {
+      // .env is optional
+    }
+  }
+
   const app = fastify({ logger: false });
   const pispaceUrl = options.pispaceUrl ?? process.env.PISPACE_URL ?? 'http://127.0.0.1:3203';
   const editKey = options.editKey ?? process.env.PISPACE_EDIT_KEY?.trim() ?? '';
+  const configuredVenueFile = options.venueFile ?? process.env.PISPACE_VENUE_FILE ?? process.env.VENUE_FILE;
 
   const webDir = path.resolve('src/web');
   const threeDir = path.resolve('node_modules/three');
@@ -101,6 +112,37 @@ export function createMapperServer(options: ServerOptions = {}): FastifyInstance
   // Validate a venue model
   app.post<{ Body: unknown }>('/api/validate', async (req) => {
     return validateVenueModel(req.body);
+  });
+
+  const resolveDefaultVenue = (): { venuePath: string; venue: unknown } | null => {
+    const candidates = [
+      configuredVenueFile,
+      path.resolve('../keskuskirkko/apps/pispace/keskuskirkko-venue.json'),
+      path.resolve('venues/keskuskirkko.json'),
+    ].filter(Boolean) as string[];
+
+    for (const cand of candidates) {
+      const resolved = path.resolve(cand);
+      if (fs.existsSync(resolved) && path.extname(resolved).toLowerCase() === '.json') {
+        try {
+          const content = fs.readFileSync(resolved, 'utf8');
+          const venue = JSON.parse(content);
+          return { venuePath: resolved, venue };
+        } catch {
+          // continue checking candidates
+        }
+      }
+    }
+    return null;
+  };
+
+  // Get default venue from .env or local site repo
+  app.get('/api/default-venue', async (_req, reply) => {
+    const def = resolveDefaultVenue();
+    if (!def) {
+      return reply.code(404).send({ error: 'No default venue file configured or found' });
+    }
+    return def;
   });
 
   // Get pre-built venue template

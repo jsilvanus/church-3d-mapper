@@ -1,6 +1,14 @@
 import { createMapperServer } from './server.js';
 
 async function main(): Promise<void> {
+  if (typeof process.loadEnvFile === 'function') {
+    try {
+      process.loadEnvFile();
+    } catch {
+      // .env is optional
+    }
+  }
+
   const port = Number(process.env.MAPPER_PORT ?? 3109);
   const host = process.env.MAPPER_HOST ?? '0.0.0.0';
 

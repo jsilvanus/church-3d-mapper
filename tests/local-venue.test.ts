@@ -37,3 +37,19 @@ test('local venue folder: read venue and meshes, refuse escapes, save validated 
   assert.equal(JSON.parse(fs.readFileSync(venuePath, 'utf8')).description, 'edited');
   await app.close();
 });
+
+test('default venue route: serves venue configured in options or env', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'c3m-def-'));
+  const venuePath = path.join(dir, 'default-venue.json');
+  const venue = createStandardHallTemplate();
+  venue.name = 'Configured Hall';
+  fs.writeFileSync(venuePath, JSON.stringify(venue));
+
+  const app = createMapperServer({ venueFile: venuePath });
+  const res = await app.inject({ method: 'GET', url: '/api/default-venue' });
+  assert.equal(res.statusCode, 200);
+  const data = res.json();
+  assert.equal(data.venuePath, venuePath);
+  assert.equal(data.venue.name, 'Configured Hall');
+  await app.close();
+});

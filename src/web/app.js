@@ -1504,7 +1504,20 @@ document.getElementById("templateSelect")?.addEventListener("change", async (e) 
   const val = e.target.value;
   if (!val) return;
   if (val === "keskuskirkko") {
-    currentVenue = JSON.parse(JSON.stringify(KESKUSKIRKKO_TEMPLATE));
+    try {
+      const res = await fetch("/api/default-venue");
+      if (res.ok) {
+        const data = await res.json();
+        currentVenue = data.venue || JSON.parse(JSON.stringify(KESKUSKIRKKO_TEMPLATE));
+        if (data.venuePath) {
+          try { localStorage.setItem(LOCAL_VENUE_KEY, data.venuePath); } catch {}
+        }
+      } else {
+        currentVenue = JSON.parse(JSON.stringify(KESKUSKIRKKO_TEMPLATE));
+      }
+    } catch {
+      currentVenue = JSON.parse(JSON.stringify(KESKUSKIRKKO_TEMPLATE));
+    }
   } else if (val === "standard-hall") {
     try {
       const res = await fetch("/api/templates/standard-hall");
@@ -2272,6 +2285,46 @@ window.addEventListener("resize", () => {
 // Initial boot
 resizeCanvas();
 render();
+
+async function loadInitialVenue() {
+  const local = localVenuePath();
+  if (local) {
+    try {
+      const res = await fetch(`/api/local/file?venue=${encodeURIComponent(local)}`);
+      if (res.ok) {
+        currentVenue = await res.json();
+        forgetLoadedMeshes();
+        selectItem(null);
+        render();
+        if (viewMode === "3d") update3DScene();
+        return;
+      }
+    } catch (e) {
+      console.warn("Could not load venue from localVenuePath:", e);
+    }
+  }
+
+  try {
+    const res = await fetch("/api/default-venue");
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.venue && data.venuePath) {
+        currentVenue = data.venue;
+        try {
+          localStorage.setItem(LOCAL_VENUE_KEY, data.venuePath);
+        } catch { /* private window */ }
+        forgetLoadedMeshes();
+        selectItem(null);
+        render();
+        if (viewMode === "3d") update3DScene();
+        console.log(`[church-3d-mapper] Auto-loaded default venue from ${data.venuePath}`);
+      }
+    }
+  } catch (e) {
+    console.warn("Could not fetch /api/default-venue:", e);
+  }
+}
+loadInitialVenue();
 
 // ==========================================
 // FreeD Optical Triangulation Survey Wizard
