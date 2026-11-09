@@ -1468,6 +1468,60 @@ fileInput?.addEventListener("change", (e) => {
   reader.readAsText(file);
 });
 
+// Local venue file: the path stays in this browser (localStorage), never in the repo.
+const LOCAL_VENUE_KEY = "church3dMapper.localVenuePath";
+function localVenuePath() {
+  try { return localStorage.getItem(LOCAL_VENUE_KEY) || ""; } catch { return ""; }
+}
+/** URL for a venue-relative asset: from the local venue folder when one is set, else from this server. */
+function assetUrl(url) {
+  if (!url || /^(https?:|blob:|data:)/.test(url)) return url;
+  const local = localVenuePath();
+  if (local) return `/api/local/file?venue=${encodeURIComponent(local)}&file=${encodeURIComponent(url.replace(/^\/+/, ""))}`;
+  return url.startsWith("/") ? url : `/${url}`;
+}
+function forgetLoadedMeshes() {
+  if (scanMeshModel && threeScene) threeScene.remove(scanMeshModel);
+  scanMeshModel = null;
+  scanMeshVisible = false;
+  document.getElementById("btn3dScanOverlay")?.classList.remove("active");
+  meshModelCache.clear();
+}
+document.getElementById("btnOpenLocal")?.addEventListener("click", async () => {
+  const entered = prompt("Path of the venue JSON on this computer, e.g. ../site/apps/pispace/venue.json (kept in this browser only)", localVenuePath());
+  if (entered === null) return;
+  const venuePath = entered.trim();
+  try { venuePath ? localStorage.setItem(LOCAL_VENUE_KEY, venuePath) : localStorage.removeItem(LOCAL_VENUE_KEY); } catch { /* private window */ }
+  if (!venuePath) return;
+  try {
+    const res = await fetch(`/api/local/file?venue=${encodeURIComponent(venuePath)}`);
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
+    currentVenue = await res.json();
+    forgetLoadedMeshes();
+    selectItem(null);
+    render();
+    if (viewMode === "3d") update3DScene();
+  } catch (err) {
+    alert(`Could not open ${venuePath}: ${err.message}`);
+  }
+});
+document.getElementById("btnSaveLocal")?.addEventListener("click", async () => {
+  const venuePath = localVenuePath();
+  if (!venuePath) { alert("Open a local venue first (Open local)."); return; }
+  const res = await fetch(`/api/local/venue?venue=${encodeURIComponent(venuePath)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(currentVenue),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const issues = (body.issues || []).filter((i) => i.severity === "error").map((i) => `${i.path}: ${i.message}`).join("\n");
+    alert(`Not saved: ${body.error || res.status}${issues ? "\n" + issues : ""}`);
+    return;
+  }
+  alert(`Saved ${body.path}`);
+});
+
 // Validate Button
 document.getElementById("btnValidate")?.addEventListener("click", async () => {
   try {
@@ -1953,7 +2007,7 @@ function update3DScene() {
         occMesh = new THREE.Mesh(cylGeo, occMat);
         occMesh.position.set(occ.position.x, occ.position.y, occ.position.z + h / 2);
       } else if (occ.kind === "mesh" && occ.meshUrl) {
-        const normUrl = occ.meshUrl.startsWith("/") ? occ.meshUrl : `/${occ.meshUrl}`;
+        const normUrl = assetUrl(occ.meshUrl);
         const cached = meshModelCache.get(normUrl);
         if (cached) {
           const occMeshInstance = cached.clone(true);
@@ -2089,7 +2143,7 @@ function loadChurchScanModel() {
 
   const loader = new GLTFLoader();
   loader.load(
-    "/models/church.glb",
+    assetUrl(currentVenue.modelUrl || "models/church.glb"),
     (gltf) => {
       scanMeshLoading = false;
       scanMeshVisible = true;
