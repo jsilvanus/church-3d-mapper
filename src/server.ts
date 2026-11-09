@@ -40,7 +40,44 @@ export function createMapperServer(options: ServerOptions = {}): FastifyInstance
     });
   }
 
-  // Serve static UI assets
+  // Local venue folder: the venue JSON and its meshes stay in a private checkout next to this
+  // repo (e.g. ../<site>/apps/pispace). The browser keeps the path in localStorage and passes it
+  // on each request. Only requests from this machine, and only .json/.glb/.gltf files.
+  const isLoopback = (ip: string): boolean => ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+  const localFile = (venuePath: unknown, rel?: unknown): string | { code: number; error: string } => {
+    if (typeof venuePath !== 'string' || !venuePath.trim()) return { code: 400, error: 'venue path is required' };
+    const venueFile = path.resolve(venuePath.trim());
+    if (path.extname(venueFile).toLowerCase() !== '.json') return { code: 400, error: 'venue path must be a .json file' };
+    if (rel === undefined) return venueFile;
+    if (typeof rel !== 'string' || !rel) return { code: 400, error: 'file is required' };
+    const dir = path.dirname(venueFile);
+    const target = path.resolve(dir, rel.replace(/^\/+/, ''));
+    if (target !== dir && !target.startsWith(dir + path.sep)) return { code: 400, error: 'file must be inside the venue folder' };
+    if (!['.glb', '.gltf', '.json'].includes(path.extname(target).toLowerCase())) return { code: 400, error: 'only .glb, .gltf and .json files' };
+    return target;
+  };
+  const MIME: Record<string, string> = { '.glb': 'model/gltf-binary', '.gltf': 'model/gltf+json', '.json': 'application/json' };
+
+  app.get<{ Querystring: { venue?: string; file?: string } }>('/api/local/file', async (req, reply) => {
+    if (!isLoopback(req.ip)) return reply.code(403).send({ error: 'local files are only served to this machine' });
+    const target = localFile(req.query.venue, req.query.file ?? path.basename(String(req.query.venue ?? '')));
+    if (typeof target !== 'string') return reply.code(target.code).send({ error: target.error });
+    if (!fs.existsSync(target)) return reply.code(404).send({ error: `not found: ${target}` });
+    reply.header('Content-Type', MIME[path.extname(target).toLowerCase()] ?? 'application/octet-stream');
+    return reply.send(fs.createReadStream(target));
+  });
+
+  app.put<{ Querystring: { venue?: string }; Body: unknown }>('/api/local/venue', async (req, reply) => {
+    if (!isLoopback(req.ip)) return reply.code(403).send({ error: 'local files are only written from this machine' });
+    const target = localFile(req.query.venue);
+    if (typeof target !== 'string') return reply.code(target.code).send({ error: target.error });
+    if (!fs.existsSync(path.dirname(target))) return reply.code(404).send({ error: 'venue folder does not exist' });
+    const result = validateVenueModel(req.body);
+    if (!result.valid) return reply.code(400).send({ error: 'invalid venue', issues: result.issues });
+    fs.writeFileSync(target, JSON.stringify(req.body, null, 2) + '\n');
+    return { ok: true, path: target };
+  });
+
   app.get('/', async (_req, reply) => {
     reply.header('Content-Type', 'text/html');
     return fs.readFileSync(path.join(webDir, 'index.html'), 'utf8');
