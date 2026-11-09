@@ -889,7 +889,7 @@ canvas.addEventListener("mousedown", (e) => {
   const sy = e.clientY - rect.top;
   const w = screenToWorld(sx, sy);
 
-  if (e.button === 1 || e.shiftKey) {
+  if (e.button === 1 || e.button === 2 || e.shiftKey) {
     isPanning = true;
     startPan = { x: sx, y: sy };
     return;
@@ -1104,6 +1104,8 @@ function selectItem(item) {
     document.getElementById("zoneColor").value = item.ref.color || "#3b82f6";
     document.getElementById("zoneTags").value = (item.ref.tags || []).join(", ");
   } else if (item.type === "camera") {
+    if (document.getElementById("camX")) document.getElementById("camX").value = (item.ref.position?.x ?? 0).toFixed(2);
+    if (document.getElementById("camY")) document.getElementById("camY").value = (item.ref.position?.y ?? 0).toFixed(2);
     document.getElementById("camHeight").value = item.ref.position?.z ?? 3.5;
     document.getElementById("camPan").value = item.ref.baseOrientation?.pan ?? 0;
     document.getElementById("camTilt").value = item.ref.baseOrientation?.tilt ?? -10;
@@ -1303,6 +1305,75 @@ document.getElementById("wallSeeThrough")?.addEventListener("change", (e) => {
     if (viewMode === "3d") update3DScene();
   }
 });
+document.getElementById("camX")?.addEventListener("input", (e) => {
+  if (selectedItem?.type === "camera") {
+    selectedItem.ref.position = selectedItem.ref.position || {};
+    selectedItem.ref.position.x = Number(e.target.value);
+    render();
+    if (viewMode === "3d") update3DScene();
+  }
+});
+document.getElementById("camY")?.addEventListener("input", (e) => {
+  if (selectedItem?.type === "camera") {
+    selectedItem.ref.position = selectedItem.ref.position || {};
+    selectedItem.ref.position.y = Number(e.target.value);
+    render();
+    if (viewMode === "3d") update3DScene();
+  }
+});
+
+// Quick Mount Presets
+document.getElementById("btnPresetCam1")?.addEventListener("click", () => {
+  if (selectedItem?.type === "camera") {
+    selectedItem.ref.position = { x: 5.20, y: -2.17, z: 3.60 };
+    selectedItem.ref.baseOrientation = { pan: 15, tilt: -8, roll: 0 };
+    selectItem(selectedItem);
+    render();
+    if (viewMode === "3d") update3DScene();
+  }
+});
+document.getElementById("btnPresetCam2")?.addEventListener("click", () => {
+  if (selectedItem?.type === "camera") {
+    selectedItem.ref.position = { x: 0.00, y: -16.00, z: 3.80 };
+    selectedItem.ref.baseOrientation = { pan: 0, tilt: -6, roll: 0 };
+    selectItem(selectedItem);
+    render();
+    if (viewMode === "3d") update3DScene();
+  }
+});
+
+// Aim PTZ Camera at Landmark
+function aimCameraAt(target) {
+  if (!selectedItem || selectedItem.type !== "camera") return;
+  const cam = selectedItem.ref;
+  const dx = target.x - cam.position.x;
+  const dy = target.y - cam.position.y;
+  const dz = target.z - cam.position.z;
+  const panRad = Math.atan2(dx, dy);
+  let panDeg = Math.round(((panRad * 180 / Math.PI) + 360) % 360);
+  const distH = Math.hypot(dx, dy);
+  const tiltRad = Math.atan2(dz, distH);
+  let tiltDeg = Math.round(tiltRad * 180 / Math.PI);
+  cam.baseOrientation.pan = panDeg;
+  cam.baseOrientation.tilt = tiltDeg;
+  const pInput = document.getElementById("camPan");
+  const tInput = document.getElementById("camTilt");
+  if (pInput) pInput.value = panDeg;
+  if (tInput) tInput.value = tiltDeg;
+  render();
+  if (viewMode === "3d") update3DScene();
+}
+
+document.getElementById("btnAimAltar")?.addEventListener("click", () => {
+  aimCameraAt({ x: 0.0, y: 0.60, z: 0.85 });
+});
+document.getElementById("btnAimPulpit")?.addEventListener("click", () => {
+  aimCameraAt({ x: -3.50, y: -4.97, z: 1.80 });
+});
+document.getElementById("btnAimLectern")?.addEventListener("click", () => {
+  aimCameraAt({ x: 3.60, y: -5.00, z: 1.00 });
+});
+
 document.getElementById("camPan").addEventListener("input", (e) => {
   if (selectedItem?.type === "camera") {
     selectedItem.ref.baseOrientation.pan = Number(e.target.value);
@@ -1605,6 +1676,8 @@ function init3D() {
   viewport3d.appendChild(threeRenderer.domElement);
 
   threeControls = new OrbitControls(threeCamera, threeRenderer.domElement);
+  threeControls.screenSpacePanning = true;
+  threeControls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
   threeControls.target.set(0, 2, 1);
   threeControls.enableDamping = true;
   threeControls.dampingFactor = 0.05;
@@ -3195,3 +3268,81 @@ window.addEventListener("keydown", (e) => {
     if (viewMode === "3d") update3DScene();
   }
 });
+
+canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+viewport3d.addEventListener("contextmenu", (e) => e.preventDefault());
+
+// Continuous WASD & Arrow Key Navigation for 2D and 3D Views
+const navKeysDown = new Set();
+
+window.addEventListener("keydown", (e) => {
+  const isEditing = e.target instanceof HTMLInputElement ||
+                    e.target instanceof HTMLTextAreaElement ||
+                    e.target instanceof HTMLSelectElement ||
+                    (e.target && e.target.isContentEditable);
+  if (isEditing) return;
+
+  const k = e.key.toLowerCase();
+  if (["w", "a", "s", "d", "q", "e", "arrowup", "arrowdown", "arrowleft", "arrowright", "shift"].includes(k)) {
+    navKeysDown.add(k);
+  }
+});
+
+window.addEventListener("keyup", (e) => {
+  navKeysDown.delete(e.key.toLowerCase());
+});
+
+window.addEventListener("blur", () => {
+  navKeysDown.clear();
+});
+
+function updateWASDNavigation() {
+  requestAnimationFrame(updateWASDNavigation);
+  if (navKeysDown.size === 0) return;
+
+  const isEditing = document.activeElement && (
+    document.activeElement instanceof HTMLInputElement ||
+    document.activeElement instanceof HTMLTextAreaElement ||
+    document.activeElement instanceof HTMLSelectElement ||
+    document.activeElement.isContentEditable
+  );
+  if (isEditing) return;
+
+  const fast = navKeysDown.has("shift");
+
+  if (viewMode === "2d") {
+    const speed = fast ? 18 : 7;
+    let moved = false;
+    if (navKeysDown.has("w") || navKeysDown.has("arrowup")) { originScreen.y += speed; moved = true; }
+    if (navKeysDown.has("s") || navKeysDown.has("arrowdown")) { originScreen.y -= speed; moved = true; }
+    if (navKeysDown.has("a") || navKeysDown.has("arrowleft")) { originScreen.x += speed; moved = true; }
+    if (navKeysDown.has("d") || navKeysDown.has("arrowright")) { originScreen.x -= speed; moved = true; }
+    if (moved) render();
+  } else if (viewMode === "3d" && threeCamera && threeControls) {
+    const speed = fast ? 0.6 : 0.22;
+    const forward = new THREE.Vector3();
+    threeCamera.getWorldDirection(forward);
+    forward.z = 0; // horizontal movement in XY ground plane
+    if (forward.lengthSq() < 0.001) {
+      forward.set(0, 1, 0);
+    } else {
+      forward.normalize();
+    }
+    const side = new THREE.Vector3();
+    side.crossVectors(forward, threeCamera.up).normalize();
+
+    const move = new THREE.Vector3();
+    if (navKeysDown.has("w") || navKeysDown.has("arrowup")) move.addScaledVector(forward, speed);
+    if (navKeysDown.has("s") || navKeysDown.has("arrowdown")) move.addScaledVector(forward, -speed);
+    if (navKeysDown.has("a") || navKeysDown.has("arrowleft")) move.addScaledVector(side, -speed);
+    if (navKeysDown.has("d") || navKeysDown.has("arrowright")) move.addScaledVector(side, speed);
+    if (navKeysDown.has("q")) move.z -= speed;
+    if (navKeysDown.has("e")) move.z += speed;
+
+    if (move.lengthSq() > 0) {
+      threeCamera.position.add(move);
+      threeControls.target.add(move);
+    }
+  }
+}
+updateWASDNavigation();

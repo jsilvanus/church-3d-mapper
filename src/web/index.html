@@ -102,6 +102,7 @@
       <div class="canvas-overlay-hints">
         <span id="coordsDisplay">X: 0.00 m, Y: 0.00 m</span>
         <span id="modeDisplay">Mode: Select</span>
+        <span id="navHint" style="opacity: 0.85; font-size: 11px; margin-left: 10px; color: #94a3b8;">🎮 WASD / Drag to pan | Drag object to place</span>
       </div>
       <!-- 3D Camera / POV Presets Overlay -->
       <div id="view3dControls" class="view-3d-overlay" style="display: none;">
@@ -226,6 +227,16 @@
           <div id="cameraFields" style="display: none;">
             <div class="form-row">
               <div class="form-group">
+                <label>Position X (m)</label>
+                <input type="number" id="camX" step="0.05">
+              </div>
+              <div class="form-group">
+                <label>Position Y (m)</label>
+                <input type="number" id="camY" step="0.05">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
                 <label>Height Z (m)</label>
                 <input type="number" id="camHeight" step="0.1">
               </div>
@@ -241,8 +252,26 @@
               </div>
               <div class="form-group">
                 <label>HFOV (°)</label>
-                <input type="number" id="camHfov" value="67" step="1">
+                                <input type="number" id="camHfov" value="67" step="1">
               </div>
+            </div>
+            <div class="form-group" style="margin-top: 8px;">
+              <label style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Quick Mount Presets</label>
+              <div style="display: flex; gap: 4px; margin-top: 4px;">
+                <button type="button" id="btnPresetCam1" class="btn secondary" style="flex: 1; padding: 4px 6px; font-size: 11px;" title="South Chancel Pillar Mount: (5.20, -2.17, 3.60)">Pillar (Cam 1)</button>
+                <button type="button" id="btnPresetCam2" class="btn secondary" style="flex: 1; padding: 4px 6px; font-size: 11px;" title="Organ Balcony Mount: (0.00, -16.00, 3.80)">Balcony (Cam 2)</button>
+              </div>
+            </div>
+            <div class="form-group" style="margin-top: 6px;">
+              <label style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Aim Target</label>
+              <div style="display: flex; gap: 4px; margin-top: 4px;">
+                <button type="button" id="btnAimAltar" class="btn secondary" style="flex: 1; padding: 4px 6px; font-size: 11px;" title="Aim camera pan/tilt at Altar">Altar</button>
+                <button type="button" id="btnAimPulpit" class="btn secondary" style="flex: 1; padding: 4px 6px; font-size: 11px;" title="Aim camera pan/tilt at Pulpit">Pulpit</button>
+                <button type="button" id="btnAimLectern" class="btn secondary" style="flex: 1; padding: 4px 6px; font-size: 11px;" title="Aim camera pan/tilt at Lectern">Lectern</button>
+              </div>
+            </div>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 6px; line-height: 1.4;">
+              💡 <em>Click & drag camera in 2D or 3D to position it. WASD keys pan the view.</em>
             </div>
           </div>
           <div id="mapElementFields" style="display: none;">
