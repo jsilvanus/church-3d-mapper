@@ -1,235 +1,494 @@
 // Church 3D Venue Mapper Canvas & WebGL 3D Application
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const KESKUSKIRKKO_TEMPLATE = {
-  name: "Riihimäen Keskuskirkko",
-  description: "Sanctuary layout with Chancel, Altar, Pulpit, Lectern, Choir, and Organ Gallery",
-  dimensions: { widthMeters: 16.0, lengthMeters: 30.0, heightMeters: 14.0 },
-  originDescription: "Sanctuary floor at center of the communion rail curve (0, 0, 0)",
-  cameras: {
-    cam1: {
-      id: "cam1",
-      name: "Cam 1 (Side Wall / Chancel Pillar)",
-      position: { x: 5.2, y: 1.5, z: 3.6 },
-      baseOrientation: { pan: 250.0, tilt: -12.0, roll: 0.0 }
+  "$schema": "./venue-schema.json",
+  "name": "Riihimäen Keskuskirkko",
+  "description": "Photogrammetry digital twin of Riihimäen Keskuskirkko with Chancel, Altar, Pulpit, Lectern, Choir, and Organ Gallery",
+  "modelUrl": "models/church.glb",
+  "dimensions": {
+    "widthMeters": 23,
+    "lengthMeters": 30,
+    "heightMeters": 10
+  },
+  "originDescription": "Sanctuary floor at the center of the front side of the altar table (0, 0, 0)",
+  "cameras": {
+    "cam1": {
+      "id": "cam1",
+      "name": "Cam 1 (Side Wall / Chancel Pillar)",
+      "position": {
+        "x": 5.2,
+        "y": -2.17,
+        "z": 3.6
+      },
+      "baseOrientation": {
+        "pan": 250,
+        "tilt": -12,
+        "roll": 0
+      }
     },
-    cam2: {
-      id: "cam2",
-      name: "Cam 2 (Organ Gallery / Balcony)",
-      position: { x: 0.0, y: -14.5, z: 5.0 },
-      baseOrientation: { pan: 0.0, tilt: -8.0, roll: 0.0 }
+    "cam2": {
+      "id": "cam2",
+      "name": "Cam 2 (Organ Gallery / Balcony)",
+      "position": {
+        "x": 0,
+        "y": -18.17,
+        "z": 5
+      },
+      "baseOrientation": {
+        "pan": 0,
+        "tilt": -8,
+        "roll": 0
+      }
     }
   },
-  zones: [
+  "zones": [
     {
-      id: "pulpit",
-      name: "Saarnastuoli (Pulpit)",
-      floorHeight: 1.3,
-      ceilingHeight: 4.5,
-      color: "#e74c3c",
-      tags: ["speaker", "sermon", "liturgy"],
-      polygon: [
-        { x: -4.5, y: -0.5 },
-        { x: -2.6, y: -0.5 },
-        { x: -2.6, y: 1.8 },
-        { x: -4.5, y: 1.8 }
+      "id": "altar",
+      "name": "Alttari (Altar Chancel)",
+      "floorHeight": 0.4,
+      "ceilingHeight": 12,
+      "color": "#9b59b6",
+      "tags": [
+        "liturgy",
+        "eucharist",
+        "blessing"
+      ],
+      "polygon": [
+        {
+          "x": -2.8,
+          "y": -0.2
+        },
+        {
+          "x": 2.8,
+          "y": -0.2
+        },
+        {
+          "x": 2.8,
+          "y": 2
+        },
+        {
+          "x": -2.8,
+          "y": 2
+        }
       ]
     },
     {
-      id: "lectern",
-      name: "Lukupulpetti (Lectern)",
-      floorHeight: 0.4,
-      ceilingHeight: 3.5,
-      color: "#f39c12",
-      tags: ["reader", "readings", "prayers"],
-      polygon: [
-        { x: 1.8, y: -0.5 },
-        { x: 3.5, y: -0.5 },
-        { x: 3.5, y: 1.6 },
-        { x: 1.8, y: 1.6 }
+      "id": "communion_rail",
+      "name": "Alttarikaide (Communion Rail)",
+      "floorHeight": 0.4,
+      "ceilingHeight": 3,
+      "color": "#3498db",
+      "tags": [
+        "communion"
+      ],
+      "polygon": [
+        {
+          "x": -3.2,
+          "y": -4.47
+        },
+        {
+          "x": 3.2,
+          "y": -4.47
+        },
+        {
+          "x": 3.2,
+          "y": -3.17
+        },
+        {
+          "x": -3.2,
+          "y": -3.17
+        }
       ]
     },
     {
-      id: "altar",
-      name: "Alttari (Altar Chancel)",
-      floorHeight: 0.4,
-      ceilingHeight: 12.0,
-      color: "#9b59b6",
-      tags: ["liturgy", "eucharist", "blessing"],
-      polygon: [
-        { x: -2.8, y: 0.6 },
-        { x: 2.8, y: 0.6 },
-        { x: 2.8, y: 5.2 },
-        { x: -2.8, y: 5.2 }
+      "id": "pulpit",
+      "name": "Saarnastuoli (Pulpit)",
+      "floorHeight": 1.3,
+      "ceilingHeight": 4.5,
+      "color": "#e74c3c",
+      "tags": [
+        "speaker",
+        "sermon",
+        "liturgy"
+      ],
+      "polygon": [
+        {
+          "x": -4.5,
+          "y": -4.17
+        },
+        {
+          "x": -2.6,
+          "y": -4.17
+        },
+        {
+          "x": -2.6,
+          "y": -1.87
+        },
+        {
+          "x": -4.5,
+          "y": -1.87
+        }
       ]
     },
     {
-      id: "communion_rail",
-      name: "Alttarikaide (Communion Rail)",
-      floorHeight: 0.4,
-      ceilingHeight: 3.0,
-      color: "#3498db",
-      tags: ["communion"],
-      polygon: [
-        { x: -3.2, y: -0.8 },
-        { x: 3.2, y: -0.8 },
-        { x: 3.2, y: 0.5 },
-        { x: -3.2, y: 0.5 }
+      "id": "lectern",
+      "name": "Lukupulpetti (Lectern)",
+      "floorHeight": 0.4,
+      "ceilingHeight": 3.5,
+      "color": "#f39c12",
+      "tags": [
+        "reader",
+        "readings",
+        "prayers"
+      ],
+      "polygon": [
+        {
+          "x": 1.8,
+          "y": -4.17
+        },
+        {
+          "x": 3.5,
+          "y": -4.17
+        },
+        {
+          "x": 3.5,
+          "y": -2.07
+        },
+        {
+          "x": 1.8,
+          "y": -2.07
+        }
       ]
     },
     {
-      id: "choir",
-      name: "Kuorotila (Choir Area)",
-      floorHeight: 0.4,
-      ceilingHeight: 8.0,
-      color: "#2ecc71",
-      tags: ["music", "choir"],
-      polygon: [
-        { x: 3.2, y: 0.6 },
-        { x: 6.5, y: 0.6 },
-        { x: 6.5, y: 4.5 },
-        { x: 3.2, y: 4.5 }
+      "id": "choir",
+      "name": "Kuorotila (Choir Area)",
+      "floorHeight": 0.4,
+      "ceilingHeight": 8,
+      "color": "#2ecc71",
+      "tags": [
+        "music",
+        "choir"
+      ],
+      "polygon": [
+        {
+          "x": 3.2,
+          "y": -3.07
+        },
+        {
+          "x": 6.5,
+          "y": -3.07
+        },
+        {
+          "x": 6.5,
+          "y": 0.83
+        },
+        {
+          "x": 3.2,
+          "y": 0.83
+        }
       ]
     },
     {
-      id: "organ_loft",
-      name: "Urkuparvi (Organ Gallery)",
-      floorHeight: 4.5,
-      ceilingHeight: 12.0,
-      color: "#1abc9c",
-      tags: ["music", "organist"],
-      polygon: [
-        { x: -6.0, y: -20.0 },
-        { x: 6.0, y: -20.0 },
-        { x: 6.0, y: -13.5 },
-        { x: -6.0, y: -13.5 }
+      "id": "nave",
+      "name": "Kirkkosali (Nave / Pews)",
+      "floorHeight": 0,
+      "ceilingHeight": 12,
+      "color": "#7f8c8d",
+      "tags": [
+        "congregation"
+      ],
+      "polygon": [
+        {
+          "x": -7,
+          "y": -17.67
+        },
+        {
+          "x": 7,
+          "y": -17.67
+        },
+        {
+          "x": 7,
+          "y": -4.67
+        },
+        {
+          "x": -7,
+          "y": -4.67
+        }
       ]
     },
     {
-      id: "nave",
-      name: "Kirkkosali (Nave / Pews)",
-      floorHeight: 0.0,
-      ceilingHeight: 12.0,
-      color: "#7f8c8d",
-      tags: ["congregation"],
-      polygon: [
-        { x: -7.0, y: -14.0 },
-        { x: 7.0, y: -14.0 },
-        { x: 7.0, y: -1.0 },
-        { x: -7.0, y: -1.0 }
+      "id": "organ_loft",
+      "name": "Urkuparvi (Organ Gallery)",
+      "floorHeight": 4.5,
+      "ceilingHeight": 12,
+      "color": "#1abc9c",
+      "tags": [
+        "music",
+        "organist"
+      ],
+      "polygon": [
+        {
+          "x": -6,
+          "y": -23.67
+        },
+        {
+          "x": 6,
+          "y": -23.67
+        },
+        {
+          "x": 6,
+          "y": -17.17
+        },
+        {
+          "x": -6,
+          "y": -17.17
+        }
       ]
     }
   ],
-  occluders: [
+  "occluders": [
     {
-      id: "pulpit_facade",
-      name: "Pulpit Wooden Balustrade & Desk",
-      kind: "mesh",
-      meshUrl: "models/pulpit-facade.glb",
-      position: { x: -3.5, y: 0.5, z: 1.3 },
-      rotation: { x: 0, y: 0, z: 0 },
-      scale: { x: 1.0, y: 1.0, z: 1.0 },
-      dimensions: { width: 1.8, depth: 1.4, height: 1.2 }
+      "id": "altar_table",
+      "name": "Alttari (Altar Table)",
+      "kind": "mesh",
+      "meshUrl": "models/altar.glb",
+      "position": {
+        "x": 0,
+        "y": 0.6,
+        "z": 0.4
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "scale": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      }
     },
     {
-      id: "altar_table",
-      name: "Alttaripöytä (4-Legged Table)",
-      kind: "table",
-      position: { x: 0.0, y: 2.5, z: 0.4 },
-      dimensions: { width: 3.2, depth: 1.2, height: 0.95 }
+      "id": "communion_rail",
+      "name": "Alttarikaide (Communion Rail)",
+      "kind": "mesh",
+      "meshUrl": "models/communion-rail.glb",
+      "position": {
+        "x": 0,
+        "y": -3.67,
+        "z": 0.4
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "scale": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      }
+    },
+    {
+      "id": "pulpit_facade",
+      "name": "Pulpit Wooden Balustrade & Desk",
+      "kind": "mesh",
+      "meshUrl": "models/pulpit-facade.glb",
+      "position": {
+        "x": -3.5,
+        "y": -3.17,
+        "z": 1.3
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "scale": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      }
+    },
+    {
+      "id": "lectern_stand",
+      "name": "Lukupulpetti (Lectern Desk)",
+      "kind": "mesh",
+      "meshUrl": "models/lectern.glb",
+      "position": {
+        "x": 2.6,
+        "y": -3.17,
+        "z": 0.4
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "scale": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      }
+    },
+    {
+      "id": "organ_gallery_balustrade",
+      "name": "Urkuparven Kaide (Gallery Balustrade)",
+      "kind": "mesh",
+      "meshUrl": "models/organ-balcony.glb",
+      "position": {
+        "x": 0,
+        "y": -18.67,
+        "z": 4.5
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "scale": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      }
     }
   ],
-  floors: [
+  "floors": [
     {
-      id: "altar_chancel_dais",
-      name: "Alttarikoroke (Chancel Dais +0.40m)",
-      elevation: 0.40,
-      thickness: 0.40,
-      color: "#252e3d",
-      polygon: [
-        { x: -5.0, y: 0.0 },
-        { x: 5.0, y: 0.0 },
-        { x: 5.0, y: 5.6 },
-        { x: -5.0, y: 5.6 }
+      "id": "altar_chancel_dais",
+      "name": "Alttarikoroke (Chancel Dais +0.40m)",
+      "elevation": 0.4,
+      "thickness": 0.4,
+      "color": "#252e3d",
+      "polygon": [
+        {
+          "x": -5,
+          "y": -3.67
+        },
+        {
+          "x": 5,
+          "y": -3.67
+        },
+        {
+          "x": 5,
+          "y": 1.93
+        },
+        {
+          "x": -5,
+          "y": 1.93
+        }
       ]
     },
     {
-      id: "organ_gallery_floor",
-      name: "Urkuparven Lattia (Organ Gallery +4.50m)",
-      elevation: 4.50,
-      thickness: 0.50,
-      color: "#1e293b",
-      polygon: [
-        { x: -7.5, y: -14.8 },
-        { x: 7.5, y: -14.8 },
-        { x: 7.5, y: -10.5 },
-        { x: -7.5, y: -10.5 }
+      "id": "organ_gallery_floor",
+      "name": "Urkuparven Lattia (Organ Gallery +4.50m)",
+      "elevation": 4.5,
+      "thickness": 0.5,
+      "color": "#1e293b",
+      "polygon": [
+        {
+          "x": -7.5,
+          "y": -18.47
+        },
+        {
+          "x": 7.5,
+          "y": -18.47
+        },
+        {
+          "x": 7.5,
+          "y": -14.17
+        },
+        {
+          "x": -7.5,
+          "y": -14.17
+        }
       ]
     }
   ],
-  walls: [
+  "walls": [
     {
-      id: "north_arcade_header",
-      name: "North Arcade Wall (Open Bottom Arch)",
-      start: { x: -4.8, y: -10.5 },
-      end: { x: -4.8, y: 5.5 },
-      bottomZ: 3.8,
-      topZ: 14.0,
-      thickness: 0.45,
-      color: "#475569"
+      "id": "north_arcade_header",
+      "name": "North Arcade Wall (Open Bottom Arch)",
+      "start": {
+        "x": -4.8,
+        "y": -14.17
+      },
+      "end": {
+        "x": -4.8,
+        "y": 1.83
+      },
+      "bottomZ": 3.8,
+      "topZ": 10,
+      "thickness": 0.45,
+      "color": "#475569"
     },
     {
-      id: "south_arcade_header",
-      name: "South Arcade Wall (Open Bottom Arch)",
-      start: { x: 4.8, y: -10.5 },
-      end: { x: 4.8, y: 5.5 },
-      bottomZ: 3.8,
-      topZ: 14.0,
-      thickness: 0.45,
-      color: "#475569"
+      "id": "south_arcade_header",
+      "name": "South Arcade Wall (Open Bottom Arch)",
+      "start": {
+        "x": 4.8,
+        "y": -14.17
+      },
+      "end": {
+        "x": 4.8,
+        "y": 1.83
+      },
+      "bottomZ": 3.8,
+      "topZ": 10,
+      "thickness": 0.45,
+      "color": "#475569"
     },
     {
-      id: "chancel_arch_header",
-      name: "Chancel Triumphal Arch (Open Bottom)",
-      start: { x: -4.8, y: 0.1 },
-      end: { x: 4.8, y: 0.1 },
-      bottomZ: 5.2,
-      topZ: 14.0,
-      thickness: 0.5,
-      color: "#526071"
+      "id": "chancel_arch_header",
+      "name": "Chancel Triumphal Arch (Open Bottom)",
+      "start": {
+        "x": -4.8,
+        "y": -3.57
+      },
+      "end": {
+        "x": 4.8,
+        "y": -3.57
+      },
+      "bottomZ": 5.2,
+      "topZ": 10,
+      "thickness": 0.5,
+      "color": "#526071"
     },
     {
-      id: "north_side_wall",
-      name: "North Side Aisle Wall (Lower Ceiling 4.2m)",
-      start: { x: -8.0, y: -14.8 },
-      end: { x: -8.0, y: 5.8 },
-      bottomZ: 0.0,
-      topZ: 4.2,
-      thickness: 0.4,
-      color: "#334155",
-      seeThrough: true
+      "id": "north_side_wall",
+      "name": "North Side Aisle Wall (Lower Ceiling 4.2m)",
+      "start": {
+        "x": -8,
+        "y": -18.47
+      },
+      "end": {
+        "x": -8,
+        "y": 2.13
+      },
+      "bottomZ": 0,
+      "topZ": 4.2,
+      "thickness": 0.4,
+      "color": "#334155"
     },
     {
-      id: "south_side_wall",
-      name: "South Side Aisle Wall (Lower Ceiling 4.2m)",
-      start: { x: 8.0, y: -14.8 },
-      end: { x: 8.0, y: 5.8 },
-      bottomZ: 0.0,
-      topZ: 4.2,
-      thickness: 0.4,
-      color: "#334155",
-      seeThrough: true
-    },
-    {
-      id: "east_altar_wall",
-      name: "East Altar Wall",
-      start: { x: -5.0, y: 5.8 },
-      end: { x: 5.0, y: 5.8 },
-      bottomZ: 0.0,
-      topZ: 14.0,
-      thickness: 0.5,
-      color: "#334155"
+      "id": "south_side_wall",
+      "name": "South Side Aisle Wall (Lower Ceiling 4.2m)",
+      "start": {
+        "x": 8,
+        "y": -18.47
+      },
+      "end": {
+        "x": 8,
+        "y": 2.13
+      },
+      "bottomZ": 0,
+      "topZ": 4.2,
+      "thickness": 0.4,
+      "color": "#334155"
     }
   ]
 };
@@ -1519,6 +1778,10 @@ document.getElementById("btnPushPiSpace").addEventListener("click", async () => 
 // 3D WebGL Perspective Orbit Implementation
 // ==========================================
 
+let averCamModelTemplate = null;
+const gltfLoader = new GLTFLoader();
+const meshModelCache = new Map();
+
 function init3D() {
   if (threeRenderer) return;
 
@@ -1527,6 +1790,14 @@ function init3D() {
 
   threeScene = new THREE.Scene();
   threeScene.background = new THREE.Color(0x121418);
+
+  // Pre-load AVer PTZ330 CAD camera model
+  if (!averCamModelTemplate) {
+    gltfLoader.load("/models/aver-ptz330.glb", (gltf) => {
+      averCamModelTemplate = gltf.scene;
+      if (viewMode === "3d") update3DScene();
+    });
+  }
 
   threeCamera = new THREE.PerspectiveCamera(45, width / height, 0.1, 500);
   threeCamera.up.set(0, 0, 1); // +Z is UP in Church Space
@@ -1810,19 +2081,40 @@ function update3DScene() {
 
     const isSelected = selectedItem?.ref === cam;
 
-    // Camera body dome
-    const domeMat = new THREE.MeshStandardMaterial({
-      color: isSelected ? 0x3b82f6 : 0xecf0f1,
-      metalness: 0.5,
-      roughness: 0.3
-    });
-    const domeGeo = new THREE.SphereGeometry(0.22, 16, 16);
-    const domeMesh = new THREE.Mesh(domeGeo, domeMat);
-    camGroup.add(domeMesh);
-
-    // Look Vector & Wireframe Frustum
+    // Camera body: AVer PTZ330 CAD Model if available, else stylized dome
     const panRad = (cam.baseOrientation.pan * Math.PI) / 180;
     const tiltRad = (cam.baseOrientation.tilt * Math.PI) / 180;
+
+    if (averCamModelTemplate) {
+      const camInstance = averCamModelTemplate.clone(true);
+      // Pan rotation: in FreeD, pan rotates clockwise viewed from top (yaw around Z)
+      camInstance.rotation.z = -panRad;
+      const head = camInstance.getObjectByName("camera_head");
+      if (head) {
+        head.rotation.x = tiltRad;
+      }
+      if (isSelected) {
+        camInstance.traverse((child) => {
+          if (child.isMesh && child.material) {
+            child.material = child.material.clone();
+            child.material.color.set(0x38bdf8);
+            if (child.material.emissive) child.material.emissive.set(0x1e3a8a);
+          }
+        });
+      }
+      camGroup.add(camInstance);
+    } else {
+      const domeMat = new THREE.MeshStandardMaterial({
+        color: isSelected ? 0x3b82f6 : 0xecf0f1,
+        metalness: 0.5,
+        roughness: 0.3
+      });
+      const domeGeo = new THREE.SphereGeometry(0.22, 16, 16);
+      const domeMesh = new THREE.Mesh(domeGeo, domeMat);
+      camGroup.add(domeMesh);
+    }
+
+    // Look Vector & Wireframe Frustum
     const dx = Math.sin(panRad) * Math.cos(tiltRad);
     const dy = Math.cos(panRad) * Math.cos(tiltRad);
     const dz = Math.sin(tiltRad);
@@ -1918,6 +2210,50 @@ function update3DScene() {
         cylGeo.rotateX(Math.PI / 2);
         occMesh = new THREE.Mesh(cylGeo, occMat);
         occMesh.position.set(occ.position.x, occ.position.y, occ.position.z + h / 2);
+      } else if (occ.kind === "mesh" && occ.meshUrl) {
+        const normUrl = occ.meshUrl.startsWith("/") ? occ.meshUrl : `/${occ.meshUrl}`;
+        const cached = meshModelCache.get(normUrl);
+        if (cached) {
+          const occMeshInstance = cached.clone(true);
+          occMeshInstance.position.set(occ.position.x, occ.position.y, occ.position.z);
+          if (occ.rotation) {
+            occMeshInstance.rotation.set(
+              (occ.rotation.x || 0) * Math.PI / 180,
+              (occ.rotation.y || 0) * Math.PI / 180,
+              (occ.rotation.z || 0) * Math.PI / 180
+            );
+          }
+          if (occ.scale) {
+            occMeshInstance.scale.set(occ.scale.x ?? 1, occ.scale.y ?? 1, occ.scale.z ?? 1);
+          }
+          if (isSelected) {
+            occMeshInstance.traverse((child) => {
+              if (child.isMesh && child.material) {
+                child.material = child.material.clone();
+                child.material.color.set(0xef4444);
+              }
+            });
+          }
+          occMeshInstance.userData = { item: { type: "occluder", ref: occ } };
+          threeObjectsGroup.add(occMeshInstance);
+          continue;
+        } else {
+          // Trigger async fetch and re-render
+          if (!meshModelCache.has(normUrl)) {
+            meshModelCache.set(normUrl, null); // mark in-flight
+            gltfLoader.load(normUrl, (gltf) => {
+              meshModelCache.set(normUrl, gltf.scene);
+              if (viewMode === "3d") update3DScene();
+            });
+          }
+          // Temporary placeholder box while loading
+          const w = occ.dimensions?.width ?? 2.0;
+          const d = occ.dimensions?.depth ?? 1.2;
+          const h = occ.dimensions?.height ?? 1.0;
+          const boxGeo = new THREE.BoxGeometry(w, d, h);
+          occMesh = new THREE.Mesh(boxGeo, occMat);
+          occMesh.position.set(occ.position.x, occ.position.y, occ.position.z + h / 2);
+        }
       } else {
         const w = occ.dimensions?.width ?? 2.0;
         const d = occ.dimensions?.depth ?? 1.2;
@@ -1947,6 +2283,9 @@ function switchToView(mode) {
     init3D();
     onResize3D();
     update3DScene();
+    if (!scanMeshModel && !scanMeshLoading) {
+      loadChurchScanModel();
+    }
   } else {
     btnView2D.classList.add("active");
     btnView3D.classList.remove("active");
@@ -1986,6 +2325,69 @@ document.getElementById("btn3dGhostWalls")?.addEventListener("click", () => {
   if (btn) btn.classList.toggle("active", globalGhostWalls);
   update3DScene();
 });
+
+let scanMeshModel = null;
+let scanMeshVisible = false;
+let scanMeshLoading = false;
+
+function loadChurchScanModel() {
+  const btn = document.getElementById("btn3dScanOverlay");
+  if (!threeScene) return;
+
+  if (scanMeshModel) {
+    scanMeshVisible = !scanMeshVisible;
+    scanMeshModel.visible = scanMeshVisible;
+    if (btn) btn.classList.toggle("active", scanMeshVisible);
+    return;
+  }
+
+  if (scanMeshLoading) return;
+  scanMeshLoading = true;
+  if (btn) btn.innerText = "⏳ Loading Church Model...";
+
+  const loader = new GLTFLoader();
+  loader.load(
+    "/models/church.glb",
+    (gltf) => {
+      scanMeshLoading = false;
+      scanMeshVisible = true;
+      scanMeshModel = gltf.scene;
+
+      // Canonical Church 3D Model: Already transformed natively to PiSpace Metric Venue Coordinates!
+      scanMeshModel.position.set(0.0, 0.0, 0.0);
+      scanMeshModel.rotation.set(0.0, 0.0, 0.0);
+
+      scanMeshModel.traverse((child) => {
+        if (child.isMesh && child.material) {
+          child.material.roughness = 0.8;
+          child.material.metalness = 0.1;
+        }
+      });
+
+      threeScene.add(scanMeshModel);
+      if (btn) {
+        btn.innerText = "🏛 3D Church Model";
+        btn.classList.add("active");
+      }
+    },
+    (xhr) => {
+      if (btn && xhr.total) {
+        const pct = Math.round((xhr.loaded / xhr.total) * 100);
+        btn.innerText = `⏳ Loading (${pct}%)`;
+      }
+    },
+    (err) => {
+      scanMeshLoading = false;
+      console.error("Failed to load church 3D model:", err);
+      if (btn) {
+        btn.innerText = "⚠️ Failed to Load";
+        setTimeout(() => { btn.innerText = "🏛 3D Church Model"; }, 3000);
+      }
+    }
+  );
+}
+
+document.getElementById("btn3dScanOverlay")?.addEventListener("click", loadChurchScanModel);
 
 document.getElementById("btn3dReset")?.addEventListener("click", () => {
   if (!threeCamera || !threeControls) return;
