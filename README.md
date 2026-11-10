@@ -50,6 +50,14 @@ PISPACE_EDIT_KEY=... npx church-3d-mapper push venue.json --pispace-url http://1
 
 ---
 
+## Placing cameras exactly
+
+The venue's `cameras` are the single source of camera positions: pispace builds every camera's view from `position` and `baseOrientation` (pan 0° = +Y towards the altar, clockwise towards +X; tilt negative = down). Set them here, then **Save local** (the site file) and **Push to PiSpace**.
+
+- **Move:** drag a camera in the 2D plan or the 3D view. In 3D, Shift-drag changes its height.
+- **Aim:** drag the yellow dot in front of the selected camera, or Alt-drag the camera, to the point it should look at. Pan and tilt follow, with tilt aimed at head height (1.5 m) of a person standing there; hold Shift to keep the tilt. The Altar / Pulpit / Lectern buttons aim at those zones of the venue.
+- **Exact values:** type X, Y, height, pan and tilt (0.01 m and 0.1° steps), or with a camera selected: Alt+arrows move 1 cm, PageUp/PageDown change height 1 cm, `[` `]` pan 0.1°, `-` `=` tilt 0.1°; hold Shift for 10×.
+
 ## Site files outside this repo
 
 Real venue data and scans stay in the site's own private checkout, not here. In the editor:
