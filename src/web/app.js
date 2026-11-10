@@ -3564,3 +3564,28 @@ window.mapperDebug = {
     return { x: ((v.x + 1) / 2) * viewport3d.clientWidth, y: ((1 - v.y) / 2) * viewport3d.clientHeight };
   },
 };
+
+// Live people view: pispace's embeddable module, reached through this server's /pispace/ pass-through.
+const liveModal = document.getElementById("liveModal");
+let liveView = null;
+async function openLiveView() {
+  liveModal.style.display = "flex";
+  if (liveView) return;
+  try {
+    const { mountLiveView } = await import("/pispace/web/live-view.js");
+    liveView = await mountLiveView(document.getElementById("liveView"), { baseUrl: "/pispace", THREE });
+    window.mapperLive = liveView;
+  } catch (err) {
+    document.getElementById("liveView").textContent = `Could not open the live view (is pispace running and up to date?): ${err.message}`;
+  }
+}
+function closeLiveView() {
+  liveModal.style.display = "none";
+  liveView?.destroy();
+  liveView = null;
+  window.mapperLive = null;
+  document.getElementById("liveView").textContent = "";
+}
+document.getElementById("btnOpenLive")?.addEventListener("click", openLiveView);
+document.getElementById("btnCloseLive")?.addEventListener("click", closeLiveView);
+document.getElementById("liveBackdrop")?.addEventListener("click", closeLiveView);

@@ -42,6 +42,7 @@
       <button id="btnSaveLocal" class="btn secondary" title="Save the venue back to the local file opened with Open local">Save local</button>
       <button id="btnValidate" class="btn secondary">Validate</button>
       <button id="btnOpenSurvey" class="btn secondary" title="Optical Theodolite & FreeD Triangulation Survey">📐 FreeD Survey</button>
+      <button id="btnOpenLive" class="btn secondary" title="Live 3D view of the people pispace is tracking; click a camera, then a person, to see the pan/tilt it needs">👥 Live</button>
       <button id="btnExport" class="btn primary">Export venue.json</button>
       <button id="btnPushPiSpace" class="btn accent">Push to PiSpace</button>
       <button id="btnLiveLayout" class="btn secondary" title="Switch PiSpace to the layout shown here, without pushing the whole model">Use layout live</button>
@@ -346,6 +347,21 @@
   </div>
 
   <!-- FreeD Optical Triangulation Survey Modal -->
+  <div id="liveModal" class="modal" style="display: none;">
+    <div class="modal-backdrop" id="liveBackdrop"></div>
+    <div class="modal-dialog live-dialog">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span class="icon">👥</span>
+          <h2>Live people (pispace)</h2>
+        </div>
+        <button id="btnCloseLive" class="btn-close" title="Close">&times;</button>
+      </div>
+      <p class="modal-desc live-desc">The venue pispace is running now (push first to see edits), its cameras and everyone it tracks. Drag to turn, right-drag to move, wheel to zoom. Click a camera, then a person or the floor: the pan/tilt it needs is shown. No camera is moved.</p>
+      <div id="liveView" class="live-view"></div>
+    </div>
+  </div>
+
   <div id="surveyModal" class="modal" style="display: none;">
     <div class="modal-backdrop" id="surveyBackdrop"></div>
     <div class="modal-dialog">

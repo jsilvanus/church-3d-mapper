@@ -58,6 +58,10 @@ The venue's `cameras` are the single source of camera positions: pispace builds 
 - **Aim:** drag the yellow dot in front of the selected camera, or Alt-drag the camera, to the point it should look at. Pan and tilt follow, with tilt aimed at head height (1.5 m) of a person standing there; hold Shift to keep the tilt. The Altar / Pulpit / Lectern buttons aim at those zones of the venue.
 - **Exact values:** type X, Y, height, pan and tilt (0.01 m and 0.1° steps), or with a camera selected: Alt+arrows move 1 cm, PageUp/PageDown change height 1 cm, `[` `]` pan 0.1°, `-` `=` tilt 0.1°; hold Shift for 10×.
 
+## Live people
+
+**👥 Live** opens pispace's live view (`web/live-view.js`, the same module any other program can embed; see the pispace README): the venue pispace is running now, its cameras and every person it tracks. Click a camera, then a person or the floor, to see the pan/tilt/zoom pispace solves for it; nothing moves a real camera. The mapper reaches pispace (`PISPACE_URL`) through `/pispace/`, which passes on only the live-view module and `venue`, `scene`, `events` and `solve-ptz`, so no CORS setup is needed. It shows what pispace has, so push a changed venue first.
+
 ## Site files outside this repo
 
 Real venue data and scans stay in the site's own private checkout, not here. In the editor:
