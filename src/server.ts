@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import fastify, { type FastifyInstance } from 'fastify';
 import fastifyStatic from '@fastify/static';
+import { Readable } from 'node:stream';
 import { validateVenueModel } from './validator.js';
 import { createStandardHallTemplate } from './templates/standard-hall.js';
 
@@ -152,6 +153,43 @@ export function createMapperServer(options: ServerOptions = {}): FastifyInstance
       return createStandardHallTemplate();
     }
     return reply.code(404).send({ error: 'Template not found' });
+  });
+
+  // Live view of tracked people: pispace's own module and data, passed through so the page needs
+  // no CORS. Only these pispace paths are reachable through /pispace/.
+  const PISPACE_PASS: Record<string, 'GET' | 'POST'> = {
+    '/web/live-view.js': 'GET',
+    '/web/live-geometry.js': 'GET',
+    '/api/v1/venue': 'GET',
+    '/api/v1/scene': 'GET',
+    '/api/v1/events': 'GET',
+    '/api/v1/solve-ptz': 'POST',
+  };
+  app.route<{ Params: { '*': string } }>({
+    method: ['GET', 'POST'],
+    url: '/pispace/*',
+    handler: async (req, reply) => {
+      const sub = '/' + (req.params['*'] ?? '');
+      if (PISPACE_PASS[sub] !== req.method) return reply.code(404).send({ error: 'Not passed through to pispace' });
+      const ctrl = new AbortController();
+      // The response closing (not the request: that closes once its body is read) means the browser left.
+      reply.raw.on('close', () => ctrl.abort());
+      try {
+        const res = await fetch(`${pispaceUrl.replace(/\/+$/, '')}${sub}`, {
+          method: req.method,
+          signal: ctrl.signal,
+          ...(req.method === 'POST' ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req.body ?? {}) } : {}),
+        });
+        reply.code(res.status);
+        reply.header('Content-Type', res.headers.get('content-type') ?? 'application/octet-stream');
+        reply.header('Cache-Control', 'no-cache');
+        if (!res.body) return reply.send();
+        return reply.send(Readable.fromWeb(res.body as any));
+      } catch (err: any) {
+        if (ctrl.signal.aborted) return reply;
+        return reply.code(502).send({ error: `Failed to connect to PiSpace: ${err.message}` });
+      }
+    },
   });
 
   // Fetch live scene snapshot from PiSpace
