@@ -671,6 +671,23 @@ function drawCameras() {
     ctx.fill();
     ctx.stroke();
 
+    // Aim handle (drag to aim) on the selected camera
+    if (isSelected) {
+      const h = aimHandleScreen(cam);
+      ctx.strokeStyle = "#fbbf24";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(h.x, h.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "#fbbf24";
+      ctx.beginPath();
+      ctx.arc(h.x, h.y, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     // Camera Label
     ctx.fillStyle = "#ffffff";
     ctx.font = "bold 11px sans-serif";
@@ -845,6 +862,19 @@ canvas.addEventListener("mousemove", (e) => {
     return;
   }
 
+  if (cameraDrag) {
+    if (cameraDrag.mode === "move") {
+      cameraDrag.cam.position.x = round2(w.x - cameraDrag.grab.x);
+      cameraDrag.cam.position.y = round2(w.y - cameraDrag.grab.y);
+    } else {
+      aimCameraRef(cameraDrag.cam, { x: w.x, y: w.y, z: AIM_TARGET_HEIGHT }, e.shiftKey);
+    }
+    refreshCameraFields();
+    render();
+    schedule3DUpdate();
+    return;
+  }
+
   if (isMovingObject && selectedItem) {
     const dx = w.x - moveStartWorld.x;
     const dy = w.y - moveStartWorld.y;
@@ -918,8 +948,21 @@ canvas.addEventListener("mousedown", (e) => {
       }
     }
 
+    // Camera aim handle: drag it to set pan (and tilt towards a standing person there)
+    if (selectedItem?.type === "camera" && hitAimHandle(selectedItem.ref, sx, sy)) {
+      cameraDrag = { mode: "aim", cam: selectedItem.ref };
+      canvas.style.cursor = "crosshair";
+      return;
+    }
     const item = findItemAt(sx, sy, w);
     selectItem(item);
+    if (item?.type === "camera") {
+      // Alt+drag aims, plain drag moves the camera
+      cameraDrag = e.altKey
+        ? { mode: "aim", cam: item.ref }
+        : { mode: "move", cam: item.ref, grab: { x: w.x - item.ref.position.x, y: w.y - item.ref.position.y } };
+      canvas.style.cursor = e.altKey ? "crosshair" : "grabbing";
+    }
     render();
   } else if (currentTool === "add-zone") {
     currentDraftPolygon.push({ x: Math.round(w.x * 10) / 10, y: Math.round(w.y * 10) / 10 });
@@ -1035,6 +1078,14 @@ canvas.addEventListener("dblclick", () => {
 window.addEventListener("mouseup", () => {
   isPanning = false;
   draggingVertex = null;
+  if (isMovingObject || cameraDrag) {
+    isMovingObject = false;
+    cameraDrag = null;
+    canvas.style.cursor = "";
+    if (selectedItem) selectItem(selectedItem);
+    render();
+    if (viewMode === "3d") update3DScene();
+  }
 });
 
 canvas.addEventListener("wheel", (e) => {
@@ -1322,57 +1373,35 @@ document.getElementById("camY")?.addEventListener("input", (e) => {
   }
 });
 
-// Quick Mount Presets
-document.getElementById("btnPresetCam1")?.addEventListener("click", () => {
-  if (selectedItem?.type === "camera") {
-    selectedItem.ref.position = { x: 5.20, y: -2.17, z: 3.60 };
-    selectedItem.ref.baseOrientation = { pan: 15, tilt: -8, roll: 0 };
-    selectItem(selectedItem);
-    render();
-    if (viewMode === "3d") update3DScene();
-  }
-});
-document.getElementById("btnPresetCam2")?.addEventListener("click", () => {
-  if (selectedItem?.type === "camera") {
-    selectedItem.ref.position = { x: 0.00, y: -16.00, z: 3.80 };
-    selectedItem.ref.baseOrientation = { pan: 0, tilt: -6, roll: 0 };
-    selectItem(selectedItem);
-    render();
-    if (viewMode === "3d") update3DScene();
-  }
-});
-
 // Aim PTZ Camera at Landmark
 function aimCameraAt(target) {
   if (!selectedItem || selectedItem.type !== "camera") return;
-  const cam = selectedItem.ref;
-  const dx = target.x - cam.position.x;
-  const dy = target.y - cam.position.y;
-  const dz = target.z - cam.position.z;
-  const panRad = Math.atan2(dx, dy);
-  let panDeg = Math.round(((panRad * 180 / Math.PI) + 360) % 360);
-  const distH = Math.hypot(dx, dy);
-  const tiltRad = Math.atan2(dz, distH);
-  let tiltDeg = Math.round(tiltRad * 180 / Math.PI);
-  cam.baseOrientation.pan = panDeg;
-  cam.baseOrientation.tilt = tiltDeg;
-  const pInput = document.getElementById("camPan");
-  const tInput = document.getElementById("camTilt");
-  if (pInput) pInput.value = panDeg;
-  if (tInput) tInput.value = tiltDeg;
+  aimCameraRef(selectedItem.ref, target);
+  refreshCameraFields();
   render();
   if (viewMode === "3d") update3DScene();
 }
 
-document.getElementById("btnAimAltar")?.addEventListener("click", () => {
-  aimCameraAt({ x: 0.0, y: 0.60, z: 0.85 });
-});
-document.getElementById("btnAimPulpit")?.addEventListener("click", () => {
-  aimCameraAt({ x: -3.50, y: -4.97, z: 1.80 });
-});
-document.getElementById("btnAimLectern")?.addEventListener("click", () => {
-  aimCameraAt({ x: 3.60, y: -5.00, z: 1.00 });
-});
+/** Point the camera's base pan (0 = +Y, clockwise towards +X) and tilt at a point. keepTilt leaves tilt alone. */
+function aimCameraRef(cam, target, keepTilt = false) {
+  cam.baseOrientation = cam.baseOrientation || { pan: 0, tilt: 0, roll: 0 };
+  const dx = target.x - cam.position.x;
+  const dy = target.y - cam.position.y;
+  const dz = target.z - cam.position.z;
+  cam.baseOrientation.pan = Math.round((((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 360) * 10) / 10;
+  if (!keepTilt) cam.baseOrientation.tilt = Math.round(((Math.atan2(dz, Math.hypot(dx, dy)) * 180) / Math.PI) * 10) / 10;
+}
+
+
+function aimAtZone(id, height) {
+  const zone = (currentVenue.zones || []).find((z) => z.id === id);
+  if (!zone || !zone.polygon?.length) { alert(`This venue has no zone "${id}".`); return; }
+  const c = zone.polygon.reduce((a, p) => ({ x: a.x + p.x / zone.polygon.length, y: a.y + p.y / zone.polygon.length }), { x: 0, y: 0 });
+  aimCameraAt({ x: c.x, y: c.y, z: (zone.floorHeight ?? 0) + height });
+}
+document.getElementById("btnAimAltar")?.addEventListener("click", () => aimAtZone("altar", 1.2));
+document.getElementById("btnAimPulpit")?.addEventListener("click", () => aimAtZone("pulpit", 1.5));
+document.getElementById("btnAimLectern")?.addEventListener("click", () => aimAtZone("lectern", 1.5));
 
 document.getElementById("camPan").addEventListener("input", (e) => {
   if (selectedItem?.type === "camera") {
@@ -1715,8 +1744,69 @@ function init3D() {
   threeSurveyGroup = new THREE.Group();
   threeScene.add(threeSurveyGroup);
 
+  // 3D camera dragging: press on a camera and drag it along the floor plane at its height;
+  // Shift-drag changes its height. Orbit controls pause while dragging.
+  const ndc = (e) => {
+    const rect = viewport3d.getBoundingClientRect();
+    threeMouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    threeMouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    threeRaycaster.setFromCamera(threeMouse, threeCamera);
+  };
+  let drag3d = null;
+  let justDragged3d = false;
+  viewport3d.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    ndc(e);
+    for (const hit of threeRaycaster.intersectObjects(threeObjectsGroup.children, true)) {
+      let curr = hit.object;
+      while (curr && !curr.userData?.item) curr = curr.parent;
+      const item = curr?.userData?.item;
+      if (item?.type !== "camera") continue;
+      const cam = item.ref;
+      const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -cam.position.z);
+      const p = new THREE.Vector3();
+      threeRaycaster.ray.intersectPlane(plane, p);
+      drag3d = { cam, grab: { x: p.x - cam.position.x, y: p.y - cam.position.y }, startY: e.clientY, startZ: cam.position.z, moved: false };
+      selectItem(item);
+      if (threeControls) threeControls.enabled = false;
+      viewport3d.setPointerCapture(e.pointerId);
+      e.stopPropagation();
+      return;
+    }
+  }, true);
+  viewport3d.addEventListener("pointermove", (e) => {
+    if (!drag3d) return;
+    drag3d.moved = true;
+    const cam = drag3d.cam;
+    if (e.shiftKey) {
+      cam.position.z = round2(Math.max(0, drag3d.startZ + (drag3d.startY - e.clientY) * 0.01));
+    } else {
+      ndc(e);
+      const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -cam.position.z);
+      const p = new THREE.Vector3();
+      if (!threeRaycaster.ray.intersectPlane(plane, p)) return;
+      cam.position.x = round2(p.x - drag3d.grab.x);
+      cam.position.y = round2(p.y - drag3d.grab.y);
+      drag3d.startY = e.clientY;
+      drag3d.startZ = cam.position.z;
+    }
+    refreshCameraFields();
+    schedule3DUpdate();
+  });
+  const endDrag3d = () => {
+    if (!drag3d) return;
+    justDragged3d = drag3d.moved;
+    drag3d = null;
+    if (threeControls) threeControls.enabled = true;
+    render();
+    update3DScene();
+  };
+  viewport3d.addEventListener("pointerup", endDrag3d);
+  viewport3d.addEventListener("pointercancel", endDrag3d);
+
   // Raycasting for 3D Click Selection
   viewport3d.addEventListener("click", (e) => {
+    if (justDragged3d) { justDragged3d = false; return; }
     const rect = viewport3d.getBoundingClientRect();
     threeMouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     threeMouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -3304,6 +3394,68 @@ document.getElementById("btnLiveLayout")?.addEventListener("click", async () => 
   }
 });
 
+// ---- Camera placement helpers ----
+const AIM_TARGET_HEIGHT = 1.5; // aim at head height of a standing person
+const round2 = (n) => Math.round(n * 100) / 100;
+let cameraDrag = null; // { mode: "move" | "aim", cam, grab? }
+let pending3D = false;
+function schedule3DUpdate() {
+  if (viewMode !== "3d" || pending3D) return;
+  pending3D = true;
+  requestAnimationFrame(() => { pending3D = false; update3DScene(); });
+}
+function refreshCameraFields() {
+  if (selectedItem?.type !== "camera") return;
+  const c = selectedItem.ref;
+  const set = (id, v) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = v; };
+  set("camX", c.position.x.toFixed(2));
+  set("camY", c.position.y.toFixed(2));
+  set("camHeight", c.position.z.toFixed(2));
+  set("camPan", c.baseOrientation?.pan ?? 0);
+  set("camTilt", c.baseOrientation?.tilt ?? 0);
+}
+/** Aim handle = small ring 2.5 m out along the camera's pan direction (2D map). */
+function aimHandleScreen(cam) {
+  const rad = ((90 - (cam.baseOrientation?.pan ?? 0)) * Math.PI) / 180;
+  const p = worldToScreen(cam.position.x, cam.position.y);
+  const d = Math.max(2.5 * scale, 40);
+  return { x: p.x + Math.cos(rad) * d, y: p.y - Math.sin(rad) * d, from: p };
+}
+function hitAimHandle(cam, sx, sy) {
+  const h = aimHandleScreen(cam);
+  return Math.hypot(h.x - sx, h.y - sy) < 9;
+}
+
+// Keyboard nudges for the selected camera (exact placement):
+//   Alt+arrows move 1 cm (Alt+Shift 10 cm), PageUp/PageDown height 1 cm (Shift 10 cm),
+//   [ ] pan 0.1° (Shift 1°), - = tilt 0.1° (Shift 1°)
+window.addEventListener("keydown", (e) => {
+  if (selectedItem?.type !== "camera") return;
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
+  const cam = selectedItem.ref;
+  cam.baseOrientation = cam.baseOrientation || { pan: 0, tilt: 0, roll: 0 };
+  const step = e.shiftKey ? 0.1 : 0.01;
+  const deg = e.shiftKey ? 1 : 0.1;
+  let handled = true;
+  if (e.altKey && e.key === "ArrowUp") cam.position.y = round2(cam.position.y + step);
+  else if (e.altKey && e.key === "ArrowDown") cam.position.y = round2(cam.position.y - step);
+  else if (e.altKey && e.key === "ArrowRight") cam.position.x = round2(cam.position.x + step);
+  else if (e.altKey && e.key === "ArrowLeft") cam.position.x = round2(cam.position.x - step);
+  else if (e.key === "PageUp") cam.position.z = round2(cam.position.z + step);
+  else if (e.key === "PageDown") cam.position.z = round2(cam.position.z - step);
+  else if (e.key === "]" || e.key === "}") cam.baseOrientation.pan = Math.round((((cam.baseOrientation.pan + deg) % 360) + 360) % 360 * 10) / 10;
+  else if (e.key === "[" || e.key === "{") cam.baseOrientation.pan = Math.round((((cam.baseOrientation.pan - deg) % 360) + 360) % 360 * 10) / 10;
+  else if (e.key === "=" || e.key === "+") cam.baseOrientation.tilt = Math.round(Math.min(90, cam.baseOrientation.tilt + deg) * 10) / 10;
+  else if (e.key === "-" || e.key === "_") cam.baseOrientation.tilt = Math.round(Math.max(-90, cam.baseOrientation.tilt - deg) * 10) / 10;
+  else handled = false;
+  if (!handled) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  refreshCameraFields();
+  render();
+  schedule3DUpdate();
+}, true);
+
 // R / Shift+R rotates the selected furniture or movable object by 15°
 window.addEventListener("keydown", (e) => {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
@@ -3399,3 +3551,16 @@ function updateWASDNavigation() {
   }
 }
 updateWASDNavigation();
+
+// Read-only hook for browser tests and the console.
+window.mapperDebug = {
+  get venue() { return currentVenue; },
+  get selected() { return selectedItem; },
+  worldToScreen: (x, y) => worldToScreen(x, y),
+  /** Screen position (CSS px inside the 3D viewport) of a venue point. */
+  project3D: (x, y, z) => {
+    if (!threeCamera) return null;
+    const v = new THREE.Vector3(x, y, z).project(threeCamera);
+    return { x: ((v.x + 1) / 2) * viewport3d.clientWidth, y: ((1 - v.y) / 2) * viewport3d.clientHeight };
+  },
+};

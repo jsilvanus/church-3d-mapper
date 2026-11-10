@@ -228,38 +228,31 @@
             <div class="form-row">
               <div class="form-group">
                 <label>Position X (m)</label>
-                <input type="number" id="camX" step="0.05">
+                <input type="number" id="camX" step="0.01">
               </div>
               <div class="form-group">
                 <label>Position Y (m)</label>
-                <input type="number" id="camY" step="0.05">
+                <input type="number" id="camY" step="0.01">
               </div>
             </div>
             <div class="form-row">
               <div class="form-group">
                 <label>Height Z (m)</label>
-                <input type="number" id="camHeight" step="0.1">
+                <input type="number" id="camHeight" step="0.01">
               </div>
               <div class="form-group">
                 <label>Base Pan (°)</label>
-                <input type="number" id="camPan" step="1">
+                <input type="number" id="camPan" step="0.1">
               </div>
             </div>
             <div class="form-row">
               <div class="form-group">
                 <label>Base Tilt (°)</label>
-                <input type="number" id="camTilt" step="1">
+                <input type="number" id="camTilt" step="0.1">
               </div>
               <div class="form-group">
                 <label>HFOV (°)</label>
                                 <input type="number" id="camHfov" value="67" step="1">
-              </div>
-            </div>
-            <div class="form-group" style="margin-top: 8px;">
-              <label style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Quick Mount Presets</label>
-              <div style="display: flex; gap: 4px; margin-top: 4px;">
-                <button type="button" id="btnPresetCam1" class="btn secondary" style="flex: 1; padding: 4px 6px; font-size: 11px;" title="South Chancel Pillar Mount: (5.20, -2.17, 3.60)">Pillar (Cam 1)</button>
-                <button type="button" id="btnPresetCam2" class="btn secondary" style="flex: 1; padding: 4px 6px; font-size: 11px;" title="Organ Balcony Mount: (0.00, -16.00, 3.80)">Balcony (Cam 2)</button>
               </div>
             </div>
             <div class="form-group" style="margin-top: 6px;">
@@ -271,7 +264,7 @@
               </div>
             </div>
             <div style="font-size: 11px; color: var(--text-muted); margin-top: 6px; line-height: 1.4;">
-              💡 <em>Click & drag camera in 2D or 3D to position it. WASD keys pan the view.</em>
+              💡 <em>Drag a camera to move it (2D or 3D; Shift-drag in 3D changes height). Drag the yellow dot, or Alt-drag the camera, to aim it at a point (Shift keeps the tilt). Exact: type the values, or Alt+arrows 1 cm, PageUp/PageDown height, [ ] pan, − = tilt (Shift = 10×).</em>
             </div>
           </div>
           <div id="mapElementFields" style="display: none;">
